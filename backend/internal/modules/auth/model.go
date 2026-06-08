@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"net"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,7 +32,7 @@ type Invite struct {
 	RevokedBy      *uuid.UUID     `gorm:"type:uuid"                     json:"revokedBy,omitempty"`
 	ResendCount    int            `gorm:"not null;default:0"            json:"resendCount"`
 	LastResentAt   *time.Time     `                                      json:"lastResentAt,omitempty"`
-	IP             *net.IP        `gorm:"type:inet"                     json:"ip,omitempty"`
+	IP             *string       `gorm:"type:inet"                     json:"ip,omitempty"`
 	UserAgent      string         `                                      json:"userAgent,omitempty"`
 	Metadata       model.JSONB    `gorm:"type:jsonb;default:'{}'::jsonb" json:"metadata"`
 }
@@ -44,7 +43,7 @@ type PasswordResetToken struct {
 	model.Base
 	UserID    uuid.UUID  `gorm:"type:uuid;not null;index" json:"userId"`
 	TokenHash []byte     `gorm:"type:bytea;not null;uniqueIndex" json:"-"`
-	IP        *net.IP    `gorm:"type:inet"                json:"ip,omitempty"`
+	IP        *string   `gorm:"type:inet"                json:"ip,omitempty"`
 	UserAgent string     `                                  json:"userAgent,omitempty"`
 	ExpiresAt time.Time  `gorm:"not null"                  json:"expiresAt"`
 	UsedAt    *time.Time `                                  json:"usedAt,omitempty"`
@@ -64,7 +63,7 @@ type RefreshToken struct {
 	DeviceID       string     `                                    json:"deviceId,omitempty"`
 	DeviceName     string     `                                    json:"deviceName,omitempty"`
 	Client         string     `                                    json:"client,omitempty"`
-	IP             *net.IP    `gorm:"type:inet"                  json:"ip,omitempty"`
+	IP             *string   `gorm:"type:inet"                  json:"ip,omitempty"`
 	UserAgent      string     `                                    json:"userAgent,omitempty"`
 	IssuedAt       time.Time  `gorm:"not null;default:now()"     json:"issuedAt"`
 	ExpiresAt      time.Time  `gorm:"not null"                    json:"expiresAt"`
@@ -116,6 +115,19 @@ type AcceptInviteRequest struct {
 	FirstName string `json:"firstName" binding:"required,min=1,max=80"`
 	LastName  string `json:"lastName,omitempty"`
 	Password  string `json:"password"  binding:"required,min=8,max=128"`
+}
+
+// RegisterRequest is the public sign-up payload. Creates a brand-new tenant,
+// its default organization, a super-admin-of-that-tenant user (NOT a global
+// super-admin), and an active membership with the Owner role. The new tenant
+// has no subscription — the client must hit /subscriptions/change next.
+type RegisterRequest struct {
+	Email            string `json:"email"            binding:"required,email"`
+	Password         string `json:"password"         binding:"required,min=8,max=128"`
+	FirstName        string `json:"firstName"        binding:"required,min=1,max=80"`
+	LastName         string `json:"lastName,omitempty"`
+	OrganizationName string `json:"organizationName" binding:"required,min=1,max=200"`
+	OrganizationSlug string `json:"organizationSlug" binding:"required,min=2,max=64"`
 }
 
 type ForgotPasswordRequest struct {

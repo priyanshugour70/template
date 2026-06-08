@@ -13,6 +13,7 @@ import { COOKIE_ACCESS } from "@/lib/cookies/names";
 
 const publicPaths = [
   "/auth/login",
+  "/auth/signup",
   "/auth/forgot-password",
   "/auth/reset-password",
   "/auth/accept-invite",

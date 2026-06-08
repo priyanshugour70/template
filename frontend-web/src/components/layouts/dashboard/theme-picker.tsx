@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { writePalette } from "@/lib/cookies";
-import { ALL_PALETTE_IDS, type PaletteId } from "@/theme/palettes";
+import { PALETTE_LIST, type PaletteId } from "@/theme/palettes";
 import { usePaletteStore } from "@/stores/session/palette.store";
 
 export function ThemePicker() {
@@ -51,14 +51,17 @@ export function ThemePicker() {
             <div className="text-xs font-semibold text-muted-foreground uppercase px-2 py-1">
               Palette
             </div>
-            {ALL_PALETTE_IDS.map((id) => (
+            {PALETTE_LIST.map((p) => (
               <button
-                key={id}
-                onClick={() => selectPalette(id)}
-                className={`w-full text-left rounded-sm px-2 py-1.5 text-sm hover:bg-accent flex items-center gap-2 ${palette === id ? "bg-accent" : ""}`}
+                key={p.id}
+                onClick={() => selectPalette(p.id)}
+                className={`w-full text-left rounded-sm px-2 py-1.5 text-sm hover:bg-accent flex items-center gap-2 ${palette === p.id ? "bg-accent" : ""}`}
               >
-                <span className="h-3 w-3 rounded-full border" data-palette-swatch={id} />
-                {id.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                <span
+                  className="h-3 w-3 rounded-full border"
+                  style={{ background: p.swatches.primary }}
+                />
+                {p.label}
               </button>
             ))}
           </div>

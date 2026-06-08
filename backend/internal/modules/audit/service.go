@@ -80,7 +80,8 @@ func (s *Service) HandlerFunc() queue.Handler {
 		}
 		if evt.IP != "" {
 			if parsed := net.ParseIP(evt.IP); parsed != nil {
-				row.IP = &parsed
+				s := parsed.String()
+				row.IP = &s
 			}
 		}
 		if err := s.repo.Insert(ctx, &row); err != nil {

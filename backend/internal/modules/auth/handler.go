@@ -29,6 +29,7 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 		a.POST("/forgot-password", h.forgotPassword)
 		a.POST("/reset-password", h.resetPassword)
 		a.POST("/accept-invite", h.acceptInvite)
+		a.POST("/register", h.register)
 	}
 	authed := g.Group("/auth", auth)
 	{
@@ -175,6 +176,20 @@ func (h *Handler) invite(c *gin.Context) {
 		return
 	}
 	response.Created(c, inv)
+}
+
+func (h *Handler) register(c *gin.Context) {
+	var req RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
+		return
+	}
+	out, err := h.svc.Register(c.Request.Context(), req, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Created(c, out)
 }
 
 func (h *Handler) acceptInvite(c *gin.Context) {

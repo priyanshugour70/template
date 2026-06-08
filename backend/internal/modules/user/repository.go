@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"time"
 
@@ -64,8 +65,12 @@ func (r *Repository) UpdateUserLogin(ctx context.Context, id uuid.UUID, ip, user
 		"last_login_user_agent": userAgent,
 		"failed_login_count":    0,
 	}
+	// Only write last_login_ip when we have a parsed IP — Postgres inet
+	// rejects empty strings.
 	if ip != "" {
-		patch["last_login_ip"] = ip
+		if parsed := net.ParseIP(ip); parsed != nil {
+			patch["last_login_ip"] = parsed.String()
+		}
 	}
 	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(patch).Error
 }

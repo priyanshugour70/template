@@ -272,6 +272,71 @@ func (s *Service) RevokeSession(ctx context.Context, jti uuid.UUID) error {
 	return s.repo.RevokeRefresh(ctx, jti, "user_revoked")
 }
 
+// ── register (new tenant + admin) ──────────────────────────────────────────
+
+// Register creates a fresh tenant, default org, owner user, owner membership,
+// and seeds system roles. Returns a login pair so the client lands logged-in.
+// The new tenant has NO subscription — caller must onboard one before any
+// gated feature works.
+func (s *Service) Register(ctx context.Context, req RegisterRequest, ip, userAgent string) (*LoginResponse, error) {
+	// 1. Tenant + default org.
+	t, defaultOrg, err := s.tenantSvc.CreateTenant(ctx, tenant.CreateTenantRequest{
+		Slug:           req.OrganizationSlug,
+		Name:           req.OrganizationName,
+		AdminEmail:     req.Email,
+		AdminFirstName: req.FirstName,
+		AdminLastName:  req.LastName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Owner user (full bcrypt; status=active so they can sign in straight away).
+	pw, err := hash.Password(req.Password)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeInternal, "hash password failed", err)
+	}
+	u, err := s.userSvc.Create(ctx, user.CreateUserInput{
+		Email:                 req.Email,
+		FirstName:             req.FirstName,
+		LastName:              req.LastName,
+		PasswordHash:          pw,
+		Status:                "active",
+		PrimaryTenantID:       ptrUUID(t.ID),
+		PrimaryOrganizationID: ptrUUID(defaultOrg.ID),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Owner membership.
+	m, err := s.userSvc.CreateMembership(ctx, user.CreateMembershipInput{
+		UserID:           u.ID,
+		TenantID:         t.ID,
+		OrganizationID:   defaultOrg.ID,
+		Status:           "active",
+		IsDefault:        true,
+		IsOwner:          true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Seed system roles (owner/admin/member) for the new org.
+	actor := ptrUUID(u.ID)
+	if _, err := s.rbacSvc.SeedSystemRolesForOrg(ctx, t.ID, defaultOrg.ID, actor); err != nil {
+		return nil, err
+	}
+
+	// 5. Assign Owner role to the new membership.
+	if err := s.rbacSvc.AssignSystemRoleByKey(ctx, defaultOrg.ID, m.ID, "owner", actor); err != nil {
+		return nil, err
+	}
+
+	// 6. Issue tokens — the response shape mirrors /auth/login.
+	return s.issueLoginPair(ctx, u, t, m, ip, userAgent)
+}
+
 // ── invite ─────────────────────────────────────────────────────────────────
 
 func (s *Service) Invite(ctx context.Context, req InviteRequest) (*Invite, string, error) {
@@ -605,7 +670,9 @@ func pickDefaultMembership(ms []user.Membership) user.Membership {
 	return ms[0]
 }
 
-func ipToInet(ip string) *net.IP {
+// ipToInet parses a request IP for the Postgres inet column. Returns nil
+// when the input is empty or not parseable so GORM writes NULL.
+func ipToInet(ip string) *string {
 	if ip == "" {
 		return nil
 	}
@@ -613,7 +680,8 @@ func ipToInet(ip string) *net.IP {
 	if parsed == nil {
 		return nil
 	}
-	return &parsed
+	s := parsed.String()
+	return &s
 }
 
 func ptrUUID(u uuid.UUID) *uuid.UUID {

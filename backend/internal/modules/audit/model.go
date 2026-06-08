@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"net"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,7 +23,7 @@ type Log struct {
 	Route           string      `                                 json:"route,omitempty"`
 	StatusCode      int         `gorm:"column:status_code"       json:"statusCode,omitempty"`
 	LatencyMs       int64       `gorm:"column:latency_ms"        json:"latencyMs,omitempty"`
-	IP              *net.IP     `gorm:"type:inet"                json:"ip,omitempty"`
+	IP              *string     `gorm:"type:inet"                json:"ip,omitempty"`
 	UserAgent       string      `                                 json:"userAgent,omitempty"`
 	Action          string      `                                 json:"action,omitempty"`
 	TargetType      string      `                                 json:"targetType,omitempty"`

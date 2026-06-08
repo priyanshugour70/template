@@ -1,7 +1,6 @@
 package user
 
 import (
-	"net"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,7 +45,7 @@ type User struct {
 	NotificationPreferences model.JSONB `gorm:"column:notification_preferences;type:jsonb;default:'{}'::jsonb" json:"notificationPreferences"`
 	Metadata                model.JSONB `gorm:"type:jsonb;default:'{}'::jsonb"     json:"metadata"`
 	LastLoginAt             *time.Time  `                                           json:"lastLoginAt,omitempty"`
-	LastLoginIP             *net.IP     `gorm:"type:inet"                          json:"lastLoginIp,omitempty"`
+	LastLoginIP             *string     `gorm:"type:inet"                          json:"lastLoginIp,omitempty"`
 	LastLoginUserAgent      string      `                                           json:"lastLoginUserAgent,omitempty"`
 	FailedLoginCount        int         `gorm:"not null;default:0"                 json:"failedLoginCount"`
 	LockedUntil             *time.Time  `                                           json:"lockedUntil,omitempty"`
