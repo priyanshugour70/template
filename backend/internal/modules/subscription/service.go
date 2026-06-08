@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/your-org/your-service/internal/cache"
+	"github.com/your-org/your-service/internal/pkg/appctx"
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
 	"github.com/your-org/your-service/internal/queue"
 )
@@ -49,6 +50,60 @@ func (s *Service) GetActive(ctx context.Context, orgID uuid.UUID) (*Subscription
 		}
 		return nil, apperr.New(apperr.CodeInternal, "fetch subscription failed", err)
 	}
+	return sub, nil
+}
+
+// provisionOnPlan creates a brand-new subscription for an org on the given
+// plan. Used by both first-time onboarding (called from ChangePlan when no
+// active sub exists) and the explicit ProvisionTrial helper.
+func (s *Service) provisionOnPlan(
+	ctx context.Context,
+	tenantID, orgID uuid.UUID,
+	plan *Plan,
+	req ChangePlanRequest,
+) (*Subscription, error) {
+	now := time.Now()
+	trialEnd := now
+	status := "active"
+	if plan.TrialDays > 0 {
+		trialEnd = now.Add(time.Duration(plan.TrialDays) * 24 * time.Hour)
+		status = "trial"
+	}
+	cycle := plan.BillingCycle
+	if req.BillingCycle != "" {
+		cycle = req.BillingCycle
+	}
+	qty := req.Quantity
+	if qty <= 0 {
+		qty = 1
+	}
+	sub := &Subscription{
+		TenantID:           tenantID,
+		OrganizationID:     orgID,
+		PlanID:             plan.ID,
+		PlanCode:           plan.Code,
+		Status:             status,
+		BillingCycle:       cycle,
+		Quantity:           qty,
+		UnitPriceCents:     plan.PriceCents,
+		TotalCents:         int64(qty) * plan.PriceCents,
+		Currency:           plan.Currency,
+		StartedAt:          now,
+		CurrentPeriodStart: &now,
+		CurrentPeriodEnd:   &trialEnd,
+		Features:           plan.Features,
+		Limits:             plan.Limits,
+		Metadata:           []byte(`{}`),
+		CouponCode:         req.CouponCode,
+	}
+	if plan.TrialDays > 0 {
+		sub.TrialStartedAt = &now
+		sub.TrialEndsAt = &trialEnd
+	}
+	if err := s.repo.Create(ctx, sub); err != nil {
+		return nil, apperr.New(apperr.CodeInternal, "create subscription failed", err)
+	}
+	s.invalidateCache(ctx, orgID)
 	return sub, nil
 }
 
@@ -102,8 +157,14 @@ func (s *Service) ChangePlan(ctx context.Context, orgID uuid.UUID, req ChangePla
 	}
 	sub, err := s.repo.GetActiveByOrg(ctx, orgID)
 	if err != nil {
-		// No active subscription — create one immediately.
-		return s.ProvisionTrial(ctx, sub.TenantID, orgID)
+		// No active subscription — first-time onboarding. Provision a fresh
+		// subscription on the chosen plan. We need a tenant ID; pull it from
+		// the request context since the caller is authenticated.
+		tenantID := appctx.TenantID(ctx)
+		if tenantID == uuid.Nil {
+			return nil, apperr.New(apperr.CodeForbidden, "no tenant context", nil)
+		}
+		return s.provisionOnPlan(ctx, tenantID, orgID, plan, req)
 	}
 	patch := map[string]interface{}{
 		"plan_id":          plan.ID,

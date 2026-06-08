@@ -2,9 +2,16 @@
 
 import { Moon, Palette, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { writePalette } from "@/lib/cookies";
 import { PALETTE_LIST, type PaletteId } from "@/theme/palettes";
 import { usePaletteStore } from "@/stores/session/palette.store";
@@ -13,17 +20,10 @@ export function ThemePicker() {
   const { setTheme, resolvedTheme } = useTheme();
   const palette = usePaletteStore((s) => s.palette);
   const setPalette = usePaletteStore((s) => s.setPalette);
-  const [open, setOpen] = useState(false);
-
-  // Hydrate palette from cookie on first mount (server can read cookie too).
-  useEffect(() => {
-    // no-op — store hydrates itself.
-  }, []);
 
   function selectPalette(id: PaletteId) {
     setPalette(id);
-    writePalette(id); // persist to cookie so SSR has it next request.
-    setOpen(false);
+    writePalette(id);
   }
 
   return (
@@ -37,36 +37,34 @@ export function ThemePicker() {
         {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </Button>
 
-      <div className="relative">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Pick palette"
-          onClick={() => setOpen((v) => !v)}
-        >
-          <Palette className="h-4 w-4" />
-        </Button>
-        {open && (
-          <div className="absolute right-0 mt-2 w-56 rounded-md border bg-popover p-2 shadow-md z-50">
-            <div className="text-xs font-semibold text-muted-foreground uppercase px-2 py-1">
-              Palette
-            </div>
-            {PALETTE_LIST.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => selectPalette(p.id)}
-                className={`w-full text-left rounded-sm px-2 py-1.5 text-sm hover:bg-accent flex items-center gap-2 ${palette === p.id ? "bg-accent" : ""}`}
-              >
-                <span
-                  className="h-3 w-3 rounded-full border"
-                  style={{ background: p.swatches.primary }}
-                />
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Pick palette">
+            <Palette className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[220px]">
+          <DropdownMenuLabel>Palette</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {PALETTE_LIST.map((p) => (
+            <DropdownMenuItem
+              key={p.id}
+              onSelect={() => selectPalette(p.id)}
+              className="gap-3"
+            >
+              <span
+                className="h-4 w-4 rounded-full border ring-1 ring-inset ring-border/50"
+                style={{ background: p.swatches.primary }}
+              />
+              <div className="flex-1">
+                <div className="font-medium">{p.label}</div>
+                <div className="text-xs text-muted-foreground">{p.blurb}</div>
+              </div>
+              {palette === p.id && <span className="h-2 w-2 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

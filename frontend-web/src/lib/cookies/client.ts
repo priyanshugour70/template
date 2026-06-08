@@ -14,6 +14,8 @@ import {
   COOKIE_SESSION_ROLES,
   COOKIE_SESSION_TENANT,
   COOKIE_SESSION_USER,
+  COOKIE_SIDEBAR_COLLAPSED,
+  COOKIE_SIDEBAR_SECTIONS,
   COOKIE_THEME,
   SESSION_DISPLAY_COOKIES,
 } from "./names";
@@ -125,6 +127,28 @@ export function readTheme(): string | null {
 
 export function writeTheme(value: string) {
   writeRaw(COOKIE_THEME, value);
+}
+
+export function readSidebarCollapsed(): boolean {
+  return parseAll()[COOKIE_SIDEBAR_COLLAPSED] === "1";
+}
+
+export function writeSidebarCollapsed(collapsed: boolean) {
+  writeRaw(COOKIE_SIDEBAR_COLLAPSED, collapsed ? "1" : "0");
+}
+
+export function readSidebarSections(): Record<string, boolean> {
+  const raw = parseAll()[COOKIE_SIDEBAR_SECTIONS];
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+export function writeSidebarSections(state: Record<string, boolean>) {
+  writeRaw(COOKIE_SIDEBAR_SECTIONS, JSON.stringify(state));
 }
 
 // ── cleanup ────────────────────────────────────────────────────────────────

@@ -20,6 +20,10 @@ export {
   writePalette,
   readTheme,
   writeTheme,
+  readSidebarCollapsed,
+  writeSidebarCollapsed,
+  readSidebarSections,
+  writeSidebarSections,
   clearSessionDisplayCookies,
 } from "./client";
 

@@ -3,6 +3,9 @@ export { Input, type InputProps } from "./input";
 export { Label } from "./label";
 export { Badge, type BadgeProps } from "./badge";
 export { Avatar, AvatarImage, AvatarFallback } from "./avatar";
+export { Checkbox, type CheckboxProps } from "./checkbox";
+export { Separator } from "./separator";
+export { Skeleton } from "./skeleton";
 export {
   Card,
   CardHeader,
@@ -11,3 +14,23 @@ export {
   CardContent,
   CardFooter,
 } from "./card";
+export {
+  Dialog,
+  DialogTrigger,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./dialog";
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuGroup,
+  DropdownMenuShortcut,
+} from "./dropdown-menu";

@@ -21,6 +21,8 @@ export const COOKIE_SESSION_ROLES = "app_session_roles";
 export const COOKIE_PALETTE = "app_palette";
 export const COOKIE_THEME = "app_theme";
 export const COOKIE_LOCALE = "app_locale";
+export const COOKIE_SIDEBAR_COLLAPSED = "app_sidebar_collapsed";
+export const COOKIE_SIDEBAR_SECTIONS = "app_sidebar_sections";
 
 // All cookies the app owns. Used by logout to clear everything.
 export const ALL_APP_COOKIES = [
