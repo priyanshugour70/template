@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { clearTokens, getTokens } from "@/lib/cookies";
+import { getSessionUser, clearSessionDisplayCookies } from "@/lib/cookies";
 import { authService } from "@/services/auth";
 import type { User } from "@/types/auth";
 
@@ -18,7 +18,7 @@ interface AuthContextValue {
   loading: boolean;
   isAuthenticated: boolean;
   refreshUser: () => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthContextValue>({
   loading: true,
   isAuthenticated: false,
   refreshUser: async () => {},
-  logout: () => {},
+  logout: async () => {},
 });
 
 function redirectToLoginAfterAuthFailure() {
@@ -39,27 +39,27 @@ function redirectToLoginAfterAuthFailure() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  // Hydrate from the session-display cookie so the first paint already has
+  // the user shell (avatar, name) — avoids a flash before /me responds.
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window === "undefined") return null;
+    const s = getSessionUser();
+    return s ? (s as User) : null;
+  });
   const [loading, setLoading] = useState(true);
 
   const fetchUser = useCallback(async () => {
-    const { accessToken } = getTokens();
-    if (!accessToken) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
     try {
       const res = await authService.me();
       if (res.success && res.data) {
-        setUser(res.data);
+        setUser(res.data as unknown as User);
       } else {
-        clearTokens();
+        clearSessionDisplayCookies();
         setUser(null);
         redirectToLoginAfterAuthFailure();
       }
     } catch {
-      clearTokens();
+      clearSessionDisplayCookies();
       setUser(null);
       redirectToLoginAfterAuthFailure();
     } finally {
@@ -71,10 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchUser();
   }, [fetchUser]);
 
-  const logout = useCallback(() => {
-    const { refreshToken } = getTokens();
-    if (refreshToken) authService.logout(refreshToken).catch(() => {});
-    clearTokens();
+  const logout = useCallback(async () => {
+    await authService.logout().catch(() => {});
+    clearSessionDisplayCookies();
     setUser(null);
     if (typeof window !== "undefined") window.location.href = "/auth/login";
   }, []);

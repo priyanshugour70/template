@@ -12,7 +12,9 @@ export function useRequireAuth() {
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
-      router.replace("/auth/login");
+      const path = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
+      const redirect = path ? `?redirect=${encodeURIComponent(path)}` : "";
+      router.replace(`/auth/login${redirect}`);
     }
   }, [loading, isAuthenticated, router]);
 

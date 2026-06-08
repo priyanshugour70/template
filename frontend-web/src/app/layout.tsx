@@ -1,6 +1,13 @@
 import type { Metadata, Viewport } from "next";
 
-import { AuthProvider, PermissionsProvider, QueryProvider, ThemeProvider } from "@/providers";
+import {
+  AuthProvider,
+  PermissionsProvider,
+  QueryProvider,
+  SessionProvider,
+  TenantProvider,
+  ThemeProvider,
+} from "@/providers";
 import { inter } from "@/theme/fonts";
 import { LIGHT_THEME, DARK_THEME } from "@/theme/palettes";
 
@@ -24,9 +31,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}>
         <ThemeProvider>
           <QueryProvider>
-            <AuthProvider>
-              <PermissionsProvider>{children}</PermissionsProvider>
-            </AuthProvider>
+            <SessionProvider>
+              <TenantProvider>
+                <AuthProvider>
+                  <PermissionsProvider>{children}</PermissionsProvider>
+                </AuthProvider>
+              </TenantProvider>
+            </SessionProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

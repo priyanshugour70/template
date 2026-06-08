@@ -1,37 +1,52 @@
-import { destroyCookie, parseCookies, setCookie } from "nookies";
+/**
+ * Public cookies API for browser/client code. Server contexts (RSC / route
+ * handlers / server actions) should import from "./server" instead — that
+ * variant can read AND set HttpOnly token cookies via next/headers.
+ *
+ * Re-exported here for backward compatibility with existing imports.
+ */
 
-export const COOKIE_ACCESS = "app_access_token";
-export const COOKIE_REFRESH = "app_refresh_token";
+export * from "./names";
+export * from "./types";
+export {
+  readSessionUser as getSessionUser,
+  readSessionTenant as getSessionTenant,
+  readActiveOrganization as getActiveOrganization,
+  readOrganizations as getOrganizations,
+  readPermissions as getPermissions,
+  readRoles as getRoles,
+  readSessionSnapshot as getSessionSnapshot,
+  readPalette,
+  writePalette,
+  readTheme,
+  writeTheme,
+  clearSessionDisplayCookies,
+} from "./client";
 
-export interface Tokens {
-  accessToken?: string;
-  refreshToken?: string;
+/**
+ * Legacy stubs kept so existing imports of getTokens/clearTokens don't break
+ * during the migration. Tokens are now HttpOnly and cannot be read from
+ * client code — the new flow is:
+ *   - Login posts to /api/auth/login (sets HttpOnly cookies server-side).
+ *   - All API calls go through /api/v1/* proxy which attaches the token.
+ *   - Logout hits /api/auth/logout to clear cookies + revoke server-side.
+ */
+import { authClientLogout } from "@/lib/auth/client-logout";
+
+export function getTokens(): { accessToken?: string; refreshToken?: string } {
+  // Tokens are now HttpOnly — client code never sees them. This shape is kept
+  // to avoid breaking call sites mid-migration; the truthiness check that
+  // some code does on `accessToken` will always be undefined here. Callers
+  // should switch to the session-display cookies (readSessionUser etc.)
+  // to determine "logged in" status from the client.
+  return {};
 }
 
-const baseOptions = {
-  path: "/",
-  sameSite: "lax" as const,
-  // Browser cookies inherit the page's protocol; only mark Secure in production.
-  secure: process.env.NODE_ENV === "production",
-};
-
-export function getTokens(): Tokens {
-  const all = parseCookies();
-  return {
-    accessToken: all[COOKIE_ACCESS],
-    refreshToken: all[COOKIE_REFRESH],
-  };
+export async function clearTokens(): Promise<void> {
+  await authClientLogout();
 }
 
-export function setTokens(tokens: Required<Tokens>, maxAgeSeconds = 60 * 60 * 24 * 7) {
-  setCookie(null, COOKIE_ACCESS, tokens.accessToken, { ...baseOptions, maxAge: maxAgeSeconds });
-  setCookie(null, COOKIE_REFRESH, tokens.refreshToken, {
-    ...baseOptions,
-    maxAge: maxAgeSeconds,
-  });
-}
-
-export function clearTokens() {
-  destroyCookie(null, COOKIE_ACCESS, baseOptions);
-  destroyCookie(null, COOKIE_REFRESH, baseOptions);
+export async function setTokens(): Promise<void> {
+  // No-op stub. Tokens may only be written by /api/auth/login. This function
+  // existed in the pre-HttpOnly template; it is intentionally inert now.
 }
