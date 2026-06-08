@@ -1,0 +1,41 @@
+# Binaries
+/api
+/worker
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Coverage
+*.out
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+
+# Build artefacts
+bin/
+dist/
+
+# Local scratch
+/temp/
+samples/*
+*/samples/*

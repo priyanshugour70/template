@@ -1,0 +1,20 @@
+#!/bin/sh
+
+commit_msg_file="$1"
+commit_msg="$(sed -n '1p' "$commit_msg_file")"
+commit_msg_lower="$(printf '%s' "$commit_msg" | tr '[:upper:]' '[:lower:]')"
+
+valid_pattern='^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([a-zA-Z0-9._-]+\))?: .{3,100}$'
+generic_pattern='^(wip|test|update|changes|final|fix|bug fix|updated code|changes done|final changes|commit)$'
+
+if printf '%s' "$commit_msg_lower" | grep -Eq "$generic_pattern" || ! printf '%s' "$commit_msg" | grep -Eq "$valid_pattern"; then
+  cat <<EOF
+Invalid commit message.
+
+Required format: <type>(optional-scope): <description>
+Allowed types:    feat, fix, chore, docs, style, refactor, perf, test, build, ci, revert
+EOF
+  exit 1
+fi
+
+exit 0

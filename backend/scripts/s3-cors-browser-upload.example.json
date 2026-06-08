@@ -1,0 +1,12 @@
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "https://app.example.com"
+    ],
+    "ExposeHeaders": ["ETag", "x-amz-request-id", "x-amz-version-id"],
+    "MaxAgeSeconds": 3000
+  }
+]
