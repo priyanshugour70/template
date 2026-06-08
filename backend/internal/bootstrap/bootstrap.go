@@ -21,7 +21,14 @@ import (
 	"github.com/your-org/your-service/internal/config"
 	"github.com/your-org/your-service/internal/health"
 	"github.com/your-org/your-service/internal/middleware"
+	"github.com/your-org/your-service/internal/modules/audit"
+	"github.com/your-org/your-service/internal/modules/auth"
+	"github.com/your-org/your-service/internal/modules/rbac"
+	"github.com/your-org/your-service/internal/modules/subscription"
+	"github.com/your-org/your-service/internal/modules/tenant"
+	"github.com/your-org/your-service/internal/modules/user"
 	"github.com/your-org/your-service/internal/pkg/logger"
+	pkgmodel "github.com/your-org/your-service/internal/pkg/model"
 	"github.com/your-org/your-service/internal/pkg/response"
 	"github.com/your-org/your-service/internal/queue"
 	"github.com/your-org/your-service/internal/repository"
@@ -45,14 +52,20 @@ func parseAllowedOrigins(raw string) []string {
 
 // API is the bag of handles built by BootstrapAPI. Closed in main on shutdown.
 type API struct {
-	Config     *config.Config
-	Log        *zap.Logger
-	Router     *gin.Engine
-	DB         *gorm.DB
-	Redis      *redis.Client
-	Cache      cache.Cache
-	Producer   queue.Producer
-	QueueRedis *redis.Client
+	Config       *config.Config
+	Log          *zap.Logger
+	Router       *gin.Engine
+	DB           *gorm.DB
+	Redis        *redis.Client
+	Cache        cache.Cache
+	Producer     queue.Producer
+	QueueRedis   *redis.Client
+	TenantSvc    *tenant.Service
+	UserSvc      *user.Service
+	RBACSvc      *rbac.Service
+	SubSvc       *subscription.Service
+	AuditSvc     *audit.Service
+	AuthSvc      *auth.Service
 }
 
 func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*API, error) {
@@ -155,8 +168,24 @@ func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*AP
 
 	api := router.Group("/api/v1")
 
+	out := &API{
+		Config:     cfg,
+		Log:        log,
+		Router:     router,
+		DB:         db,
+		Redis:      rdb,
+		Cache:      cacheSvc,
+		Producer:   producer,
+		QueueRedis: queueRdb,
+	}
+
 	if db != nil {
-		registerModules(api, db, log, cfg, producer, cacheSvc)
+		// Install GORM callbacks that auto-populate created_by/updated_by/deleted_by
+		// from request context for every model.
+		if err := pkgmodel.RegisterCallbacks(db); err != nil {
+			log.Warn("model callbacks registration failed", zap.Error(err))
+		}
+		registerModules(api, db, log, cfg, producer, cacheSvc, out)
 	} else {
 		log.Warn("skipping module registration — no database connection")
 		router.NoRoute(func(c *gin.Context) {
@@ -170,16 +199,7 @@ func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*AP
 		})
 	}
 
-	return &API{
-		Config:     cfg,
-		Log:        log,
-		Router:     router,
-		DB:         db,
-		Redis:      rdb,
-		Cache:      cacheSvc,
-		Producer:   producer,
-		QueueRedis: queueRdb,
-	}, nil
+	return out, nil
 }
 
 func newRedisClient(addr, password string, db int) *redis.Client {
@@ -193,8 +213,8 @@ func newRedisClient(addr, password string, db int) *redis.Client {
 	})
 }
 
-// registerModules wires every domain module. Add new modules here in dependency
-// order: repository → service → handler → handler.Register(group).
+// registerModules wires every domain module in dependency order:
+// tenant → user → rbac → subscription → audit → auth.
 func registerModules(
 	api *gin.RouterGroup,
 	db *gorm.DB,
@@ -202,19 +222,44 @@ func registerModules(
 	cfg *config.Config,
 	producer queue.Producer,
 	cacheSvc cache.Cache,
+	out *API,
 ) {
-	_ = api
-	_ = db
-	_ = log
-	_ = cfg
-	_ = producer
-	_ = cacheSvc
-	// TODO: add modules here as they are implemented.
-	// Pattern:
-	//   repo := mymodule.NewRepository(db)
-	//   svc := mymodule.NewService(repo, log, cacheSvc)
-	//   h := mymodule.NewHandler(svc)
-	//   h.Register(api)
+	// Build module composition roots.
+	tenantM := tenant.New(db, log, cacheSvc)
+	userM := user.New(db, log, cacheSvc)
+	rbacM := rbac.New(db, log, cacheSvc, producer)
+	subM := subscription.New(db, log, cacheSvc, producer)
+	auditM := audit.New(db, log)
+	authM := auth.New(db, tenantM.Service, userM.Service, rbacM.Service, cfg, cacheSvc, producer, log)
+
+	out.TenantSvc = tenantM.Service
+	out.UserSvc = userM.Service
+	out.RBACSvc = rbacM.Service
+	out.SubSvc = subM.Service
+	out.AuditSvc = auditM.Service
+	out.AuthSvc = authM.Service
+
+	// Audit middleware on the /api/v1 group — captures every request after
+	// auth has populated user/tenant/org context.
+	api.Use(middleware.Audit(producer, log, middleware.DefaultAuditConfig()))
+
+	// Build shared middleware factories.
+	authMW := middleware.AuthRequired(authM.Signer)
+	authOpt := middleware.AuthOptional(authM.Signer)
+	permFn := rbacM.Middleware.RequirePermission
+
+	// AuthOptional runs on the api group so audit can capture user info on
+	// unauth'd paths if the client sent a token anyway.
+	api.Use(authOpt)
+
+	// Mount module routes. Note: auth-related sub-routes that require an
+	// authenticated principal pass authMW into their own group inside Routes().
+	tenantM.Handler.Routes(api, authMW, permFn)
+	userM.Handler.Routes(api, authMW, permFn)
+	rbacM.Handler.Routes(api, authMW, permFn)
+	subM.Handler.Routes(api, authMW, permFn)
+	auditM.Handler.Routes(api, authMW, permFn)
+	authM.Handler.Routes(api, authMW, permFn)
 }
 
 func (a *API) Close() {
