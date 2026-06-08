@@ -5,8 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/your-org/your-service/internal/pkg/correlation"
@@ -24,9 +22,9 @@ const (
 	ctxRequestLogger = "request_logger"
 )
 
-// CorrelationID ensures every request has a correlation ID: reuse client headers or generate one.
-// It sets response headers, stores a request-scoped Zap logger on the Gin context, and attaches
-// the ID to the OpenTelemetry span when present.
+// CorrelationID ensures every request has a correlation ID: reuse client headers
+// or generate one. It sets response headers, stores a request-scoped Zap logger
+// on the Gin context, and propagates the ID through context.Context.
 func CorrelationID(root *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := strings.TrimSpace(c.GetHeader(HeaderCorrelationID))
@@ -48,10 +46,6 @@ func CorrelationID(root *zap.Logger) gin.HandlerFunc {
 		c.Set(ctxRequestLogger, reqLog)
 
 		c.Request = c.Request.WithContext(correlation.WithID(c.Request.Context(), id))
-
-		if span := trace.SpanFromContext(c.Request.Context()); span.SpanContext().IsValid() {
-			span.SetAttributes(attribute.String("correlation.id", id))
-		}
 
 		c.Next()
 	}

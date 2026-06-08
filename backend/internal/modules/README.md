@@ -1,6 +1,6 @@
 # internal/modules/
 
-Domain business modules — the modular monolith. Each module owns one bounded context.
+Domain business modules — the modular monolith. Each module owns one bounded context. This folder is **empty by default**; add modules as you build features.
 
 ## Standard module layout
 
@@ -25,12 +25,7 @@ internal/modules/<module>/
 
 ## Adding a new module
 
-1. Copy `sample/` to `internal/modules/<your-module>/`.
-2. Rename the package and types.
-3. Add a migration in `migrations/mariadb/NNN_<your-module>.sql` for the schema.
-4. Wire it into `internal/bootstrap/bootstrap.go::registerModules` (repo → service → handler).
-5. Add a smoke test in `<your-module>_test.go`.
-
-## Reference module
-
-[`sample/`](./sample) is a minimal end-to-end CRUD module that shows the standard layout. Read it first when starting a new module.
+1. Create `internal/modules/<your-module>/` with the files above.
+2. Add a migration in `migrations/postgres/NNN_<your-module>.sql` for the schema.
+3. Wire it into `internal/bootstrap/bootstrap.go::registerModules` (repo → service → handler).
+4. Add tests in `<your-module>_test.go`.

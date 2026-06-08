@@ -1,21 +1,23 @@
 # migrations/
 
-Database migrations and idempotent seeds.
+Forward-only PostgreSQL migrations.
 
 | Folder | Purpose |
 |--------|---------|
-| `mariadb/` | Forward-only schema migrations. Files are applied in lexicographic order and recorded in `schema_migrations`. Never edit a merged file — add a new one. |
-| `seeds/` | Idempotent seed SQL applied by `make seed`. Use `INSERT IGNORE` or `ON DUPLICATE KEY UPDATE` so seeds can run repeatedly. |
+| `postgres/` | Schema migrations applied by `scripts/migrate.sh`. Files run in lexicographic order; applied filenames are tracked in `schema_migrations`. |
 
 ## Naming
 
-- Migrations: `NNN_short_name.sql` (3-digit numeric prefix). Examples: `001_init.sql`, `017_add_audit_log_index.sql`.
-- Seeds: `NNN_short_name.sql`. Examples: `001_auth_roles.sql`, `002_default_categories.sql`.
+`NNN_short_name.sql` (3-digit numeric prefix). Examples: `001_init.sql`, `017_add_audit_log_index.sql`.
 
 ## Workflow
 
 1. Create a new file with the next number.
-2. Run `make migrate` (or `make seed`) locally to apply.
-3. Commit the file; CI will apply it on next deploy.
+2. Run `make migrate` (or `bash scripts/migrate.sh`) locally to apply.
+3. Commit the file; CI will apply it on next deploy (the EC2 deploy script runs `migrate.sh` inside the api container before starting services).
 
-`cmd/migrate` runs **both** schema migrations and seeds; `cmd/seed` only runs seeds (assuming schema is current).
+## Rules
+
+- **Never edit a merged migration.** Add a new file instead.
+- All migrations are forward-only — no down migrations. If a change is destructive, write the safe equivalent (e.g. add column nullable, backfill, then drop old column in a later migration).
+- Idempotency: use `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, etc., so re-running a failed deploy is safe.

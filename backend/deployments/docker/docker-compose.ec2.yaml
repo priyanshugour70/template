@@ -49,20 +49,5 @@ services:
       redis:
         condition: service_healthy
 
-  migrate:
-    image: ${IMAGE_URI:?IMAGE_URI is required}
-    container_name: app-migrate
-    command: ["./migrate"]
-    restart: "no"
-    env_file:
-      - path: ${RUNTIME_ENV_FILE:?RUNTIME_ENV_FILE is required}
-        format: raw
-    environment:
-      APP_ENV: ${APP_ENV:?APP_ENV is required}
-      REDIS_ADDR: redis:6379
-    depends_on:
-      redis:
-        condition: service_healthy
-
 volumes:
   redis_data:

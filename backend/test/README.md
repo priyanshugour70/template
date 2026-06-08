@@ -5,7 +5,7 @@ Integration and end-to-end tests.
 | Folder | Purpose |
 |--------|---------|
 | `unit/` | Standalone unit tests that don't need network/DB. Run with `go test ./...`. (Module-local `*_test.go` files live next to the code they test — this folder is for tests that span multiple modules.) |
-| `integration/` | Tests that hit MariaDB, Redis, or external partners. Guarded by `//go:build integration` so they don't run on every `go test`. Trigger with `make test-integration`. |
+| `integration/` | Tests that hit PostgreSQL, Redis, or external partners. Guarded by `//go:build integration` so they don't run on every `go test`. Trigger with `make test-integration`. |
 
 ## Integration test pattern
 

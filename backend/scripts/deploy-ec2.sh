@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs on EC2 (invoked via SSM by dispatch-ssm-deploy.sh).
-# Pulls the ECR image, runs migrations, restarts API/worker, then configures Nginx.
+# Pulls the ECR image, applies migrations inside the api container, restarts API/worker,
+# polls /health/ready, then configures Nginx.
 set -euo pipefail
 
 ENVIRONMENT="${ENVIRONMENT:?ENVIRONMENT is required: staging or prod}"
@@ -60,25 +61,29 @@ export IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSIT
 export RUNTIME_ENV_FILE
 export SERVER_PORT
 
+compose() {
+  docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
+}
+
 echo "==> logging in to ECR ($ECR_REPOSITORY:$IMAGE_TAG)"
 aws ecr get-login-password --region "$AWS_REGION" \
   | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
 echo "==> pulling images"
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" pull
+compose pull
 
 echo "==> starting redis"
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d redis
+compose up -d redis
 
-echo "==> running migrations"
-if ! docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" run --rm migrate; then
-  echo "Migration failed. Recent migrate logs:" >&2
-  docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=80 migrate >&2 || true
+echo "==> applying migrations (psql against managed Postgres)"
+if ! compose run --rm --no-deps --entrypoint "" api ./scripts/migrate.sh; then
+  echo "Migrations failed. Recent logs:" >&2
+  compose logs --tail=80 api >&2 || true
   exit 1
 fi
 
 echo "==> starting api and worker"
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --remove-orphans api worker
+compose up -d --remove-orphans api worker
 
 health_url="http://127.0.0.1:${HOST_API_PORT}/health/ready"
 for _ in $(seq 1 36); do
@@ -97,5 +102,5 @@ for _ in $(seq 1 36); do
 done
 
 echo "API did not become ready: $health_url" >&2
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=120 api >&2 || true
+compose logs --tail=120 api >&2 || true
 exit 1

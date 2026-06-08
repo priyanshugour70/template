@@ -1,6 +1,6 @@
 # internal/clients/
 
-External-service HTTP clients. One folder per third-party API (Shopify, ERP, OMS, payment gateway, …).
+External-service HTTP clients. One folder per third-party API (Stripe, Shopify, SendGrid, payment gateway, …). This folder is **empty by default**; add clients as your integrations require.
 
 ## Why isolate clients
 
@@ -26,7 +26,3 @@ internal/clients/<partner>/
 - The constructor returns a no-op-friendly value when configuration is incomplete (e.g. `Enabled()=false`). Bootstrap logs a warning at startup.
 - Every external call goes through the package's `http.Client` with explicit timeouts.
 - Errors from this layer should be wrapped with `errors.AppError` codes so the upstream service can decide how to react.
-
-## Reference client
-
-[`sample/`](./sample) is a minimal token-auth REST client. Copy it as a starter for new partners.

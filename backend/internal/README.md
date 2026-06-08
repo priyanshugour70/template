@@ -8,19 +8,16 @@ Private application code for this service. Everything under `internal/` is priva
 internal/
 ├── bootstrap/      → Application composition root (DI wiring)
 ├── cache/          → Cache abstraction (Redis / memory / noop) with stampede protection
-├── clients/        → External service HTTP clients (one folder per partner)
+├── clients/        → External service HTTP clients (one folder per partner — empty by default)
 ├── config/         → Static config (Viper) + dynamic business config interface
-├── health/         → Health endpoints (DB + Redis + system info)
+├── health/         → Health endpoints (Postgres + Redis + system info)
 ├── jobs/           → Background job implementations (cron-like)
-├── meilisearch/    → Optional search client + index management
 ├── middleware/     → Global HTTP middleware (CORS, security, rate-limit, logging)
-├── migrations/     → SQL migration runner used by cmd/migrate and cmd/seed
-├── modules/        → Domain business modules (one folder per bounded context)
+├── modules/        → Domain business modules (empty by default)
 ├── pkg/            → Shared infrastructure utilities (errors, logger, response, mail, …)
 ├── queue/          → Redis Pub/Sub Producer + Consumer
-├── repository/     → Shared repository utilities (GORM connection pool)
-├── server/         → HTTP server wrapper with timeouts and graceful shutdown
-└── tracing/        → OpenTelemetry tracing setup
+├── repository/     → Shared repository utilities (GORM PostgreSQL connection pool)
+└── server/         → HTTP server wrapper with timeouts and graceful shutdown
 ```
 
 ## Architectural principles

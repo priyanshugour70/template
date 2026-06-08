@@ -42,7 +42,7 @@ func main() {
 		panic(err)
 	}
 
-	// Bind HTTP immediately so Docker health / curl never see "connection reset" while bootstrap runs.
+	// Bind HTTP immediately so Docker / k8s health probes never see "connection reset" while bootstrap runs.
 	stub := gin.New()
 	stub.Use(gin.Recovery())
 	stub.GET("/health/live", func(c *gin.Context) { c.Status(http.StatusOK) })

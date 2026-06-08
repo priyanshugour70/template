@@ -1,4 +1,26 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: app-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: app-redis
@@ -31,6 +53,7 @@ services:
       APP_ENV: production
       SERVER_PORT: 8080
       SERVER_MODE: release
+      POSTGRES_HOST: postgres
       REDIS_ADDR: redis:6379
       GOMEMLIMIT: 512MiB
       GOGC: 50
@@ -39,6 +62,8 @@ services:
         limits:
           memory: 768M
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -52,6 +77,7 @@ services:
       - ../../.env
     environment:
       APP_ENV: production
+      POSTGRES_HOST: postgres
       REDIS_ADDR: redis:6379
       GOMEMLIMIT: 256MiB
       GOGC: 50
@@ -60,8 +86,11 @@ services:
         limits:
           memory: 384M
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
 volumes:
+  postgres_data:
   redis_data:

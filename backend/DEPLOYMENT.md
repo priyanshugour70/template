@@ -21,7 +21,7 @@ Docker images are pushed to a private ECR repository:
 <aws-account>.dkr.ecr.<region>.amazonaws.com/your-org/your-service:<git-sha>
 ```
 
-The repository uses immutable tags. The workflow checks whether the Git SHA tag already exists and reuses it instead of pushing twice.
+The repository uses immutable tags. The workflow reuses an existing Git-SHA tag instead of pushing twice.
 
 ### Secrets Manager
 
@@ -34,7 +34,7 @@ your-org/your-service/staging
 your-org/your-service/prod
 ```
 
-Each secret should contain the keys listed in `.env.example`. Store secret values raw (no quotes). Passwords containing `$` are supported by the EC2 compose file through `env_file.format: raw`.
+Each secret should contain the keys listed in `.env.example` (PostgreSQL credentials, Redis address, JWT secret, SMTP, S3, etc.). Store values raw (no quotes). Passwords containing `$` are supported by the EC2 compose file through `env_file.format: raw`.
 
 ### IAM
 
@@ -60,10 +60,14 @@ ECR image pull
 S3 read/write                   # if your service uploads assets
 ```
 
-Both EC2 instances must appear online in:
+### PostgreSQL
 
-```text
-AWS Systems Manager → Fleet Manager
+PostgreSQL is **not** run inside the EC2 compose stack. Use Amazon RDS (or any managed Postgres) and put the connection details in the Secrets Manager secret (`POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`, `POSTGRES_SSLMODE`).
+
+Migrations run inside the api container during deploy via:
+
+```bash
+docker compose run --rm --no-deps api ./scripts/migrate.sh
 ```
 
 ## GitHub Actions flow
@@ -89,28 +93,23 @@ On push to `staging` or `main`, GitHub Actions:
 
 CI calls `scripts/dispatch-ssm-deploy.sh`, which sends a remote shell command through SSM. On EC2 it:
 
-1. Installs missing prerequisites (`awscli`, `jq`, `curl`, `docker.io`, Docker Compose plugin, `nginx`, `certbot`, `python3-certbot-nginx`).
+1. Installs missing prerequisites (`awscli`, `jq`, `curl`, `docker.io`, Docker Compose plugin, `nginx`, `certbot`).
 2. Writes deployment files into `/opt/your-org/your-service`.
 3. Runs `scripts/deploy-ec2.sh`.
 
 The EC2 deploy script:
 
-1. Selects environment-specific values (secret/domain/project name).
-2. Fetches the Secrets Manager secret into `runtime.env`.
-3. Logs in to ECR and pulls the image.
-4. Starts Redis.
-5. Runs database migrations (`docker compose run --rm migrate`).
-6. Restarts API and worker.
-7. Polls `http://127.0.0.1:8080/health/ready`.
-8. Configures Nginx and TLS for the environment domain.
+1. Fetches the Secrets Manager secret into `runtime.env`.
+2. Logs in to ECR and pulls the image.
+3. Starts Redis.
+4. Runs `scripts/migrate.sh` **inside the api container** (so connection details from `runtime.env` are honoured and `psql` is on PATH inside the image).
+5. Starts API + worker.
+6. Polls `http://127.0.0.1:8080/health/ready`.
+7. Configures Nginx and TLS for the environment domain.
 
 ## Docker runtime
 
-EC2 uses `deployments/docker/docker-compose.ec2.yaml` with services: `redis`, `api`, `worker`, `migrate`.
-
-The same ECR image contains all binaries (built from `Dockerfile.app` which compiles every `cmd/*`).
-
-Optional integrations (Meilisearch, S3) are external; configure via env.
+EC2 uses `deployments/docker/docker-compose.ec2.yaml` with services: `redis`, `api`, `worker`. The same ECR image (built from `Dockerfile.app`) contains both binaries plus the migration script and SQL files.
 
 ## Nginx and TLS
 
@@ -122,11 +121,11 @@ Optional integrations (Meilisearch, S3) are external; configure via env.
 
 ## Common failures
 
-- **SSM `Failed` with empty output** — open *Systems Manager → Run Command*, find the invocation, and look for: missing IAM permissions on Secrets Manager, ECR pull failure, migration error, or a `/health/ready` timeout.
-- **SSM `Undeliverable`** — instance is not reachable. Check Fleet Manager **Ping status**, instance ID, region, IAM profile, SSM agent, and outbound 443.
-- **`AccessDeniedException` (Secrets Manager)** — EC2 role lacks `secretsmanager:GetSecretValue` for the secret.
+- **SSM `Failed` with empty output** — open *Systems Manager → Run Command*, find the invocation, and check for: missing IAM permissions on Secrets Manager, ECR pull failure, migration error, or a `/health/ready` timeout.
+- **SSM `Undeliverable`** — instance not reachable. Check Fleet Manager **Ping status**, instance ID, region, IAM profile, SSM agent, outbound 443.
+- **`AccessDeniedException` (Secrets Manager)** — EC2 role lacks `secretsmanager:GetSecretValue`.
 - **ECR tag already exists** — expected with immutable tags; workflow reuses existing Git-SHA tags.
-- **MariaDB access denied** — credentials or grants in Secrets Manager are wrong.
+- **PostgreSQL connection refused** — RDS security group must allow inbound from the EC2 SG.
 - **Docker Compose `$…` warning** — secrets containing `$` need `env_file.format: raw`.
 
 ## Manual rerun

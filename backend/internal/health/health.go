@@ -12,7 +12,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	ms "github.com/your-org/your-service/internal/meilisearch"
 	apperrors "github.com/your-org/your-service/internal/pkg/errors"
 	"github.com/your-org/your-service/internal/pkg/response"
 )
@@ -56,22 +55,20 @@ type SystemInfo struct {
 }
 
 type Checker struct {
-	startTime   time.Time
-	version     string
-	env         string
-	db          *gorm.DB
-	redis       *redis.Client
-	meiliClient *ms.Client
+	startTime time.Time
+	version   string
+	env       string
+	db        *gorm.DB
+	redis     *redis.Client
 }
 
-func NewChecker(version, env string, db *gorm.DB, rdb *redis.Client, meiliClient *ms.Client) *Checker {
+func NewChecker(version, env string, db *gorm.DB, rdb *redis.Client) *Checker {
 	return &Checker{
-		startTime:   time.Now(),
-		version:     version,
-		env:         env,
-		db:          db,
-		redis:       rdb,
-		meiliClient: meiliClient,
+		startTime: time.Now(),
+		version:   version,
+		env:       env,
+		db:        db,
+		redis:     rdb,
 	}
 }
 
@@ -96,9 +93,8 @@ func (h *Checker) Register(router *gin.Engine) {
 // @Router   /health [get]
 func (h *Checker) Health(c *gin.Context) {
 	components := make(map[string]ComponentHealth)
-	components["mariadb"] = h.checkMariaDB(c.Request.Context())
+	components["postgres"] = h.checkPostgres(c.Request.Context())
 	components["redis"] = h.checkRedis(c.Request.Context())
-	components["meilisearch"] = h.checkMeilisearch(c.Request.Context())
 
 	overall := StatusUp
 	for _, comp := range components {
@@ -148,7 +144,7 @@ func (h *Checker) Live(c *gin.Context) {
 	})
 }
 
-// Ready returns 200 only when MariaDB and Redis are reachable.
+// Ready returns 200 only when PostgreSQL and Redis are reachable.
 //
 // @Summary  Readiness probe
 // @Tags     health
@@ -158,12 +154,12 @@ func (h *Checker) Live(c *gin.Context) {
 // @Router   /health/ready [get]
 func (h *Checker) Ready(c *gin.Context) {
 	ctx := c.Request.Context()
-	dbHealth := h.checkMariaDB(ctx)
+	dbHealth := h.checkPostgres(ctx)
 	redisHealth := h.checkRedis(ctx)
 
 	if dbHealth.Status == StatusDown {
 		response.Fail(c, http.StatusServiceUnavailable, apperrors.CodeServiceUnavailable, "service not ready",
-			map[string]interface{}{"status": "not_ready", "reason": "mariadb down"})
+			map[string]interface{}{"status": "not_ready", "reason": "postgres down"})
 		return
 	}
 	if redisHealth.Status == StatusDown {
@@ -174,7 +170,7 @@ func (h *Checker) Ready(c *gin.Context) {
 	response.OK(c, gin.H{"status": "ready", "timestamp": time.Now().UTC().Format(time.RFC3339)})
 }
 
-func (h *Checker) checkMariaDB(ctx context.Context) ComponentHealth {
+func (h *Checker) checkPostgres(ctx context.Context) ComponentHealth {
 	if h.db == nil {
 		return ComponentHealth{Status: StatusDown, Error: "not configured"}
 	}
@@ -194,7 +190,7 @@ func (h *Checker) checkMariaDB(ctx context.Context) ComponentHealth {
 
 	stats := sqlDB.Stats()
 	var version string
-	row := sqlDB.QueryRowContext(pingCtx, "SELECT VERSION()")
+	row := sqlDB.QueryRowContext(pingCtx, "SHOW server_version")
 	_ = row.Scan(&version)
 
 	details := map[string]interface{}{
@@ -243,26 +239,6 @@ func (h *Checker) checkRedis(ctx context.Context) ComponentHealth {
 		status = StatusDegraded
 	}
 	return ComponentHealth{Status: status, Latency: latency.Round(time.Microsecond).String(), Details: details}
-}
-
-func (h *Checker) checkMeilisearch(ctx context.Context) ComponentHealth {
-	if h.meiliClient == nil {
-		return ComponentHealth{Status: StatusUp, Details: map[string]interface{}{"enabled": false}}
-	}
-	start := time.Now()
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	if err := h.meiliClient.Ping(pingCtx); err != nil {
-		return ComponentHealth{Status: StatusDegraded, Error: fmt.Sprintf("ping: %v", err)}
-	}
-	latency := time.Since(start)
-
-	st := StatusUp
-	if latency > 500*time.Millisecond {
-		st = StatusDegraded
-	}
-	return ComponentHealth{Status: st, Latency: latency.Round(time.Microsecond).String()}
 }
 
 func (h *Checker) systemInfo() SystemInfo {

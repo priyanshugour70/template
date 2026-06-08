@@ -1,6 +1,6 @@
 # backend
 
-Go backend template: **modular monolith** with Gin, **GORM** (MariaDB ORM), and Redis. Separate **API** and **Worker** processes. Designed for **high-throughput** at scale.
+Minimal Go backend template: **modular monolith** with Gin, **GORM** (PostgreSQL), and Redis. Separate **API** and **Worker** processes. Simple, low-dependency starting point.
 
 > Replace `github.com/your-org/your-service` everywhere with the real module path before committing.
 
@@ -8,14 +8,13 @@ Go backend template: **modular monolith** with Gin, **GORM** (MariaDB ORM), and 
 
 - Go 1.25+
 - Gin (HTTP framework)
-- GORM (ORM for MariaDB)
-- MariaDB 11 (primary database)
+- GORM (ORM for PostgreSQL via pgx)
+- PostgreSQL 16 (primary database)
 - Redis 7 (cache + pub/sub queue)
 - Swagger (API documentation, generated from annotations)
 - Zap (structured logging with daily file rotation)
-- OpenTelemetry (optional traces over OTLP HTTP)
-- Meilisearch (optional, for product/document discovery)
 - AWS S3 (optional, for asset uploads)
+- SMTP (optional, for transactional email)
 
 ## Quick start
 
@@ -23,7 +22,7 @@ Go backend template: **modular monolith** with Gin, **GORM** (MariaDB ORM), and 
 # 1. Copy env
 cp .env.example .env
 
-# 2. Start Redis (and MariaDB on your own / Docker Desktop / RDS)
+# 2. Start PostgreSQL + Redis (Docker)
 make docker-deps
 
 # 3. Install deps
@@ -44,7 +43,7 @@ Swagger UI: `http://localhost:8080/swagger/index.html`
 ## Full Docker Compose
 
 ```bash
-make docker-up    # starts API + Worker + Redis (MariaDB external)
+make docker-up    # starts Postgres + Redis + API + Worker
 make docker-down  # stops everything
 ```
 
@@ -62,10 +61,8 @@ GitHub Actions deploys `staging` to a staging EC2 instance and `main` to product
 | `make run-api` | Run API server |
 | `make run-worker` | Run worker |
 | `make swagger` | Generate Swagger docs |
-| `make migrate` | Apply SQL migrations |
-| `make seed` | Apply seed SQL files |
-| `make apply-sql FILE=…` | Apply a single SQL file |
-| `make docker-deps` | Start Redis only |
+| `make migrate` | Apply SQL migrations (uses `psql`) |
+| `make docker-deps` | Start PostgreSQL + Redis only |
 | `make docker-up` | Full docker-compose up |
 | `make docker-down` | Stop docker-compose |
 | `make test` | Run unit tests |
@@ -84,23 +81,24 @@ GitHub Actions deploys `staging` to a staging EC2 instance and `main` to product
 
 ## Environment variables
 
-See [`.env.example`](.env.example) for the full list. Required for any environment:
+See [`.env.example`](.env.example) for the full list. The template uses only what an application actually needs day-1:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `APP_ENV` | `development` | `development` / `staging` / `production` |
 | `SERVER_PORT` | `8080` | HTTP port |
 | `SERVER_MODE` | `debug` | Gin mode (`debug` / `release`) |
-| `MARIADB_HOST` | `localhost` | MariaDB host |
-| `MARIADB_PORT` | `3306` | MariaDB port |
-| `MARIADB_USER` | `root` | MariaDB user |
-| `MARIADB_PASSWORD` | `root` | MariaDB password |
-| `MARIADB_DATABASE` | `app_db` | Database name |
+| `POSTGRES_HOST` | `localhost` | PostgreSQL host |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `POSTGRES_USER` | `postgres` | DB user |
+| `POSTGRES_PASSWORD` | `postgres` | DB password |
+| `POSTGRES_DATABASE` | `app_db` | DB name |
+| `POSTGRES_SSLMODE` | `disable` | `disable` / `require` / `verify-full` |
 | `REDIS_ADDR` | `localhost:6379` | Redis address |
 | `AUTH_JWT_SECRET` | (dev placeholder) | JWT signing key (≥32 chars in prod) |
-| `CORS_ALLOWED_ORIGINS` | localhost dev origins | Comma-separated allowed origins |
+| `CORS_ALLOWED_ORIGINS` | localhost dev | Comma-separated allowed origins |
 
-Optional integrations: `SMTP_*`, `S3_*`, `MEILISEARCH_*`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OAUTH_GOOGLE_*`.
+Optional: `SMTP_*`, `ASSETS_S3_*`, `DEVELOPER_API_KEY_PEPPER`.
 
 ## Project structure
 
