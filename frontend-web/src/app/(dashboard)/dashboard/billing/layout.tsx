@@ -29,7 +29,7 @@ export default function BillingLayout({ children }: { children: ReactNode }) {
         </p>
       </div>
 
-      <nav className="flex gap-1 border-b -mb-px overflow-x-auto">
+      <nav className="flex gap-0.5 border-b overflow-x-auto">
         {TABS.map((t) => {
           const active = t.exact ? pathname === t.href : pathname.startsWith(t.href);
           return (
@@ -37,10 +37,10 @@ export default function BillingLayout({ children }: { children: ReactNode }) {
               key={t.href}
               href={t.href}
               className={cn(
-                "px-4 py-2 text-sm border-b-2 -mb-px whitespace-nowrap",
+                "px-3 py-2 text-[13px] border-b-2 -mb-px whitespace-nowrap transition-colors",
                 active
                   ? "border-foreground font-medium text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
+                  : "border-transparent text-muted-foreground/80 hover:text-foreground",
               )}
             >
               {t.label}
@@ -49,7 +49,7 @@ export default function BillingLayout({ children }: { children: ReactNode }) {
         })}
       </nav>
 
-      <div>{children}</div>
+      <div className="pt-4">{children}</div>
     </div>
   );
 }

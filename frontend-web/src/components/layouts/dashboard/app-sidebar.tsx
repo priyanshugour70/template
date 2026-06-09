@@ -34,6 +34,12 @@ interface NavItem {
   permission?: string;
   /** If set, user needs any one of these permissions (overrides `permission`). */
   anyPermission?: string[];
+  /**
+   * When true, the item is "active" only when pathname === href. Use this for
+   * top-of-tree items like "Home" (/dashboard) so they don't light up on every
+   * /dashboard/* subpage.
+   */
+  exact?: boolean;
 }
 
 interface NavSection {
@@ -45,9 +51,12 @@ interface NavSection {
 
 function activeHrefInSection(pathname: string, items: NavItem[]): string | undefined {
   const matches = items
-    .map((i) => i.href)
-    .filter((h) => pathname === h || pathname.startsWith(`${h}/`));
+    .filter((i) =>
+      i.exact ? pathname === i.href : pathname === i.href || pathname.startsWith(`${i.href}/`),
+    )
+    .map((i) => i.href);
   if (matches.length === 0) return undefined;
+  // Longest matching href wins so deeper routes shadow their parents.
   return matches.reduce((a, b) => (a.length >= b.length ? a : b));
 }
 
@@ -56,7 +65,7 @@ const sections: NavSection[] = [
     id: "main",
     label: "",
     collapsible: false,
-    items: [{ href: "/dashboard", label: "Home", icon: "grid" }],
+    items: [{ href: "/dashboard", label: "Home", icon: "grid", exact: true }],
   },
   {
     id: "administrative",
