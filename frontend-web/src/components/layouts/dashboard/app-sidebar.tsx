@@ -65,6 +65,8 @@ const sections: NavSection[] = [
     items: [
       { href: "/dashboard/administrative/users", label: "Users", icon: "users", permission: "user.list" },
       { href: "/dashboard/administrative/roles", label: "Roles & Permissions", icon: "key", permission: "role.list" },
+      { href: "/dashboard/administrative/departments", label: "Departments", icon: "git-branch", permission: "department.list" },
+      { href: "/dashboard/administrative/groups", label: "Groups", icon: "users-round", permission: "group.list" },
       { href: "/dashboard/administrative/organizations", label: "Organizations", icon: "building", permission: "org.list" },
       { href: "/dashboard/administrative/audit", label: "Audit log", icon: "file-text", permission: "audit.read" },
     ],
@@ -94,6 +96,15 @@ function NavIcon({ name }: { name: string }) {
     "file-text": <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M16 13H8M16 17H8M10 9H8" />,
     "credit-card": <path d="M21 4H3a2 2 0 00-2 2v12a2 2 0 002 2h18a2 2 0 002-2V6a2 2 0 00-2-2zM1 10h22" />,
     settings: <path d="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2a2 2 0 010-4h.09A1.65 1.65 0 004.6 8a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V2a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H22a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />,
+    "git-branch": (
+      <>
+        <line x1="6" y1="3" x2="6" y2="15" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="6" cy="18" r="3" />
+        <path d="M18 9a9 9 0 01-9 9" />
+      </>
+    ),
+    "users-round": <path d="M18 21a8 8 0 00-16 0M10 14a5 5 0 100-10 5 5 0 000 10zM22 21a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />,
   };
 
   return (

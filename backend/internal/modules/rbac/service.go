@@ -373,6 +373,13 @@ func (s *Service) InvalidateUserOrgCache(ctx context.Context, userID, orgID uuid
 	_ = s.cache.Delete(ctx, permCacheKey(userID, orgID))
 }
 
+// InvalidateMembership publishes a cache-bust for the given membership.
+// Used by department/group services after role-binding changes — implements
+// the CacheBuster interface those modules accept.
+func (s *Service) InvalidateMembership(ctx context.Context, membershipID uuid.UUID) {
+	s.invalidateMembershipCache(ctx, membershipID)
+}
+
 func permCacheKey(userID, orgID uuid.UUID) string {
 	return permCachePrefix + userID.String() + ":" + orgID.String()
 }

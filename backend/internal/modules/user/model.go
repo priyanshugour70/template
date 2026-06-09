@@ -75,6 +75,7 @@ type Membership struct {
 	IsBillingContact    bool        `gorm:"column:is_billing_contact"        json:"isBillingContact"`
 	JobTitle            string      `                                         json:"jobTitle,omitempty"`
 	Department          string      `                                         json:"department,omitempty"`
+	DepartmentID        *uuid.UUID  `gorm:"type:uuid;column:department_id"   json:"departmentId,omitempty"`
 	EmployeeCode        string      `                                         json:"employeeCode,omitempty"`
 	ReportsTo           *uuid.UUID  `gorm:"type:uuid"                        json:"reportsTo,omitempty"`
 	InvitedBy           *uuid.UUID  `gorm:"type:uuid"                        json:"invitedBy,omitempty"`
@@ -157,4 +158,14 @@ type ListFilter struct {
 	Department   string
 	CreatedAfter *time.Time
 	CreatedBefore *time.Time
+}
+
+// UpdateMembershipInput is the patch payload for PATCH /users/:id/memberships/:mid.
+// Pointer fields = optional; only non-nil fields are applied.
+type UpdateMembershipInput struct {
+	DepartmentID *uuid.UUID `json:"departmentId,omitempty"`
+	JobTitle     *string    `json:"jobTitle,omitempty"`
+	Department   *string    `json:"department,omitempty"`
+	EmployeeCode *string    `json:"employeeCode,omitempty"`
+	ReportsTo    *uuid.UUID `json:"reportsTo,omitempty"`
 }

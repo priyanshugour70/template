@@ -160,25 +160,61 @@ func (r *Repository) ListMembershipRoles(ctx context.Context, membershipID uuid.
 }
 
 // ResolvePermissionsForUserOrg returns the union of permission keys held by
-// the user in the given org through any of their roles. Used to populate the
-// permission cache.
+// the user in the given org. Sources:
+//   (1) direct membership_roles
+//   (2) department_roles on ancestors of the membership's department (via closure)
+//   (3) group_roles on every group containing the user (transitive via nested groups)
 func (r *Repository) ResolvePermissionsForUserOrg(ctx context.Context, userID, orgID uuid.UUID) ([]string, error) {
 	rows := []string{}
 	err := r.db.WithContext(ctx).
 		Raw(`
+			WITH active_membership AS (
+			  SELECT id, department_id
+			  FROM memberships
+			  WHERE user_id = ?
+			    AND organization_id = ?
+			    AND deleted_at IS NULL
+			    AND status = 'active'
+			  LIMIT 1
+			),
+			user_groups AS (
+			  -- transitive: every group containing the user directly OR via nested groups
+			  WITH RECURSIVE direct_groups AS (
+			    SELECT gm.group_id
+			    FROM group_members gm
+			    JOIN groups g ON g.id = gm.group_id
+			    WHERE gm.member_user_id = ?
+			      AND g.organization_id = ?
+			      AND g.deleted_at IS NULL
+			    UNION
+			    SELECT gm.group_id
+			    FROM group_members gm
+			    JOIN direct_groups dg ON dg.group_id = gm.member_group_id
+			  )
+			  SELECT group_id FROM direct_groups
+			),
+			role_ids AS (
+			  SELECT mr.role_id
+			  FROM membership_roles mr
+			  JOIN active_membership am ON am.id = mr.membership_id
+			  UNION
+			  SELECT dr.role_id
+			  FROM department_roles dr
+			  JOIN department_closure dc ON dc.ancestor_id = dr.department_id
+			  JOIN active_membership am ON am.department_id = dc.descendant_id
+			  UNION
+			  SELECT gr.role_id
+			  FROM group_roles gr
+			  JOIN user_groups ug ON ug.group_id = gr.group_id
+			)
 			SELECT DISTINCT p.key
 			FROM permissions p
 			JOIN role_permissions rp ON rp.permission_id = p.id
-			JOIN membership_roles mr ON mr.role_id = rp.role_id
-			JOIN memberships m       ON m.id = mr.membership_id
-			JOIN roles r             ON r.id = rp.role_id
-			WHERE m.user_id = ?
-			  AND m.organization_id = ?
-			  AND m.deleted_at IS NULL
-			  AND r.deleted_at IS NULL
+			JOIN role_ids ri ON ri.role_id = rp.role_id
+			JOIN roles r ON r.id = rp.role_id
+			WHERE r.deleted_at IS NULL
 			  AND p.deleted_at IS NULL
-			  AND m.status = 'active'
-		`, userID, orgID).
+		`, userID, orgID, userID, orgID).
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err

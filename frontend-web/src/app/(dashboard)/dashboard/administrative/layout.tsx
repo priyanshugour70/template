@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Building2, Lock, Users } from "lucide-react";
+import { Activity, Building2, GitBranch, Lock, Users, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -17,7 +17,9 @@ interface AdminTab {
 
 const TABS: AdminTab[] = [
   { href: "/dashboard/administrative/users", label: "Users", icon: Users, permission: "user.list" },
-  { href: "/dashboard/administrative/roles", label: "Roles & permissions", icon: Lock, permission: "role.list" },
+  { href: "/dashboard/administrative/roles", label: "Roles", icon: Lock, permission: "role.list" },
+  { href: "/dashboard/administrative/departments", label: "Departments", icon: GitBranch, permission: "department.list" },
+  { href: "/dashboard/administrative/groups", label: "Groups", icon: UsersRound, permission: "group.list" },
   { href: "/dashboard/administrative/organizations", label: "Organizations", icon: Building2, permission: "org.list" },
   { href: "/dashboard/administrative/audit", label: "Audit log", icon: Activity, permission: "audit.read" },
 ];

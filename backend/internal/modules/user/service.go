@@ -241,6 +241,53 @@ func (s *Service) SuspendMembership(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// UpdateMembership applies a typed patch to a membership row. Callers should
+// invalidate the user's permission cache after a successful update when
+// department_id or reports_to changes (downstream of role resolution).
+func (s *Service) UpdateMembership(ctx context.Context, id uuid.UUID, in UpdateMembershipInput) (*Membership, error) {
+	patch := map[string]interface{}{}
+	if in.DepartmentID != nil {
+		// Nil-UUID is the explicit "unset" sentinel from the wire format.
+		if *in.DepartmentID == uuid.Nil {
+			patch["department_id"] = nil
+		} else {
+			patch["department_id"] = *in.DepartmentID
+		}
+	}
+	if in.JobTitle != nil {
+		patch["job_title"] = *in.JobTitle
+	}
+	if in.Department != nil {
+		patch["department"] = *in.Department
+	}
+	if in.EmployeeCode != nil {
+		patch["employee_code"] = *in.EmployeeCode
+	}
+	if in.ReportsTo != nil {
+		if *in.ReportsTo == uuid.Nil {
+			patch["reports_to"] = nil
+		} else {
+			patch["reports_to"] = *in.ReportsTo
+		}
+	}
+	if len(patch) == 0 {
+		// Nothing to do — return current row.
+	} else if err := s.repo.UpdateMembership(ctx, id, patch); err != nil {
+		if IsNotFound(err) {
+			return nil, apperr.New(apperr.CodeNotFound, "membership not found", nil)
+		}
+		return nil, apperr.New(apperr.CodeInternal, "update membership failed", err)
+	}
+	row, err := s.repo.GetMembership(ctx, id)
+	if err != nil {
+		if IsNotFound(err) {
+			return nil, apperr.New(apperr.CodeNotFound, "membership not found", nil)
+		}
+		return nil, apperr.New(apperr.CodeInternal, "load membership failed", err)
+	}
+	return row, nil
+}
+
 // UpdatePasswordHash sets the user's password hash and stamps the change time.
 // Called by the auth module from accept-invite, reset-password, change-password.
 func (s *Service) UpdatePasswordHash(ctx context.Context, id uuid.UUID, pwHash string) error {

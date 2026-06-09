@@ -4,6 +4,7 @@ import {
   Activity,
   Building2,
   CreditCard,
+  GitBranch,
   Home,
   Lock,
   LogOut,
@@ -11,6 +12,7 @@ import {
   Settings as SettingsIcon,
   Sun,
   Users,
+  UsersRound,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
@@ -40,6 +42,8 @@ const NAV: NavCmd[] = [
   { label: "Home", href: "/dashboard", icon: Home, shortcut: "H" },
   { label: "Users", href: "/dashboard/administrative/users", icon: Users, permission: "user.list" },
   { label: "Roles & permissions", href: "/dashboard/administrative/roles", icon: Lock, permission: "role.list" },
+  { label: "Departments", href: "/dashboard/administrative/departments", icon: GitBranch, permission: "department.list" },
+  { label: "Groups", href: "/dashboard/administrative/groups", icon: UsersRound, permission: "group.list" },
   { label: "Organizations", href: "/dashboard/administrative/organizations", icon: Building2, permission: "org.list" },
   { label: "Audit log", href: "/dashboard/administrative/audit", icon: Activity, permission: "audit.read" },
   { label: "Subscription", href: "/dashboard/subscription", icon: CreditCard, permission: "subscription.read" },

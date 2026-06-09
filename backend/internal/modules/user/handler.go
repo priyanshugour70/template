@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -14,12 +15,26 @@ import (
 	"github.com/your-org/your-service/internal/pkg/response"
 )
 
+// MembershipCacheBuster lets the handler tell RBAC to drop cached permission
+// sets after a membership change. Implemented by rbac.Service. Injected late
+// to avoid an import cycle.
+type MembershipCacheBuster interface {
+	InvalidateMembership(ctx context.Context, membershipID uuid.UUID)
+}
+
 type Handler struct {
-	svc *Service
-	log *zap.Logger
+	svc      *Service
+	log      *zap.Logger
+	rbacBust MembershipCacheBuster
 }
 
 func NewHandler(svc *Service, log *zap.Logger) *Handler { return &Handler{svc: svc, log: log} }
+
+// WithRBAC wires the rbac cache buster so PATCH membership invalidates perms.
+func (h *Handler) WithRBAC(b MembershipCacheBuster) *Handler {
+	h.rbacBust = b
+	return h
+}
 
 type PermissionFunc func(perm string) gin.HandlerFunc
 
@@ -40,6 +55,7 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 
 		// memberships
 		users.GET("/me/memberships", h.myMemberships)
+		users.PATCH("/:id/memberships/:mid", perm("user.update"), h.updateMembership)
 		users.POST("/:id/memberships/:mid/suspend", perm("user.suspend"), h.suspendMembership)
 		users.DELETE("/:id/memberships/:mid", perm("user.delete"), h.archiveMembership)
 	}
@@ -199,6 +215,29 @@ func (h *Handler) myMemberships(c *gin.Context) {
 		return
 	}
 	response.OK(c, rows)
+}
+
+func (h *Handler) updateMembership(c *gin.Context) {
+	mid, err := uuid.Parse(c.Param("mid"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
+		return
+	}
+	var in UpdateMembershipInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid payload", err))
+		return
+	}
+	m, err := h.svc.UpdateMembership(c.Request.Context(), mid, in)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	// Bust the cached permission set — dept changes affect inherited grants.
+	if h.rbacBust != nil && (in.DepartmentID != nil || in.ReportsTo != nil) {
+		h.rbacBust.InvalidateMembership(c.Request.Context(), mid)
+	}
+	response.OK(c, m)
 }
 
 func (h *Handler) suspendMembership(c *gin.Context) {

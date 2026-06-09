@@ -23,6 +23,8 @@ import (
 	"github.com/your-org/your-service/internal/middleware"
 	"github.com/your-org/your-service/internal/modules/audit"
 	"github.com/your-org/your-service/internal/modules/auth"
+	"github.com/your-org/your-service/internal/modules/department"
+	"github.com/your-org/your-service/internal/modules/group"
 	"github.com/your-org/your-service/internal/modules/notification"
 	"github.com/your-org/your-service/internal/modules/rbac"
 	"github.com/your-org/your-service/internal/modules/subscription"
@@ -68,6 +70,8 @@ type API struct {
 	AuditSvc     *audit.Service
 	AuthSvc      *auth.Service
 	NotifSvc     *notification.Service
+	DeptSvc      *department.Service
+	GroupSvc     *group.Service
 }
 
 func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*API, error) {
@@ -233,6 +237,9 @@ func registerModules(
 	subM := subscription.New(db, log, cacheSvc, producer)
 	auditM := audit.New(db, log)
 	notifM := notification.New(db, log)
+	// dept + group plug into rbac.Service for cache invalidation on role-binding changes.
+	deptM := department.New(db, rbacM.Service, log)
+	groupM := group.New(db, rbacM.Service, log)
 	authM := auth.New(db, tenantM.Service, userM.Service, rbacM.Service, cfg, cacheSvc, producer, log)
 
 	out.TenantSvc = tenantM.Service
@@ -242,6 +249,8 @@ func registerModules(
 	out.AuditSvc = auditM.Service
 	out.AuthSvc = authM.Service
 	out.NotifSvc = notifM.Service
+	out.DeptSvc = deptM.Service
+	out.GroupSvc = groupM.Service
 
 	// Audit middleware on the /api/v1 group — captures every request after
 	// auth has populated user/tenant/org context.
@@ -259,11 +268,13 @@ func registerModules(
 	// Mount module routes. Note: auth-related sub-routes that require an
 	// authenticated principal pass authMW into their own group inside Routes().
 	tenantM.Handler.Routes(api, authMW, permFn)
-	userM.Handler.Routes(api, authMW, permFn)
+	userM.Handler.WithRBAC(rbacM.Service).Routes(api, authMW, permFn)
 	rbacM.Handler.Routes(api, authMW, permFn)
 	subM.Handler.Routes(api, authMW, permFn)
 	auditM.Handler.Routes(api, authMW, permFn)
 	notifM.Handler.Routes(api, authMW, permFn)
+	deptM.Handler.Routes(api, authMW, permFn)
+	groupM.Handler.Routes(api, authMW, permFn)
 	authM.Handler.Routes(api, authMW, permFn)
 }
 
