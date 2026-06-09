@@ -24,6 +24,7 @@ import (
 	"github.com/your-org/your-service/internal/modules/apikey"
 	"github.com/your-org/your-service/internal/modules/audit"
 	"github.com/your-org/your-service/internal/modules/auth"
+	"github.com/your-org/your-service/internal/modules/dashboard"
 	"github.com/your-org/your-service/internal/modules/department"
 	"github.com/your-org/your-service/internal/modules/group"
 	"github.com/your-org/your-service/internal/modules/webhook"
@@ -270,6 +271,7 @@ func registerModules(
 	apikeyM := apikey.New(db, log)
 	webhookM := webhook.New(db, log)
 	authM := auth.New(db, tenantM.Service, userM.Service, rbacM.Service, cfg, cacheSvc, producer, log)
+	dashboardM := dashboard.New(db, log)
 
 	out.TenantSvc = tenantM.Service
 	out.UserSvc = userM.Service
@@ -313,6 +315,7 @@ func registerModules(
 	apikeyM.Handler.Routes(api, authMW, permFn)
 	webhookM.Handler.Routes(api, authMW, permFn)
 	authM.Handler.Routes(api, authMW, permFn)
+	dashboardM.Handler.Routes(api, authMW, permFn)
 }
 
 func (a *API) Close() {

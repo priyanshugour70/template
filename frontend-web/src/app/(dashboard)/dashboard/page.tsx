@@ -1,218 +1,203 @@
 "use client";
 
-import {
-  Activity,
-  ArrowUpRight,
-  Building2,
-  CreditCard,
-  Lock,
-  TrendingUp,
-  Users,
-} from "lucide-react";
-import Link from "next/link";
+import { AlertTriangle, RefreshCcw } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDashboardSummary } from "@/hooks/dashboard/useDashboard";
 import { useAuth, useTenant } from "@/providers";
-import { useActiveBilling, useFeatureSet } from "@/hooks/billing/useBilling";
-import { useRoles } from "@/hooks/rbac/useRBACQueries";
-import { useUsers } from "@/hooks/user/useUserQueries";
 
+import { ActivityFeed } from "./_components/activity-feed";
+import { AgingChart } from "./_components/aging-chart";
+import { KPITile } from "./_components/kpi-tile";
+import { RequestsChart } from "./_components/requests-chart";
+import { RevenueChart } from "./_components/revenue-chart";
+import { StatusDonut } from "./_components/status-donut";
+import { TopEndpoints } from "./_components/top-endpoints";
+import { formatCompactMoney, formatMoney, formatNumber } from "./_components/format";
+
+// DashboardHome — the operator overview. Built from a single GET
+// /api/v1/dashboard/summary call that fans out concurrently on the backend
+// (errgroup), so 4 KPIs + 5 charts + a feed all hydrate in one round-trip.
+// Each panel handles its own loading + empty state so the page never blanks.
 export default function DashboardHome() {
   const { user } = useAuth();
   const { tenant, activeOrganization } = useTenant();
-  const usersQ = useUsers({ limit: 100 });
-  const rolesQ = useRoles();
-  const subQ = useActiveBilling();
-  const featuresQ = useFeatureSet();
+  const q = useDashboardSummary();
 
-  const userCount = usersQ.data?.total ?? 0;
-  const roleCount = rolesQ.data?.total ?? 0;
-  const planLimit = featuresQ.data?.limits["users.max"];
-  const usagePct =
-    planLimit != null && planLimit > 0 ? Math.min(100, (userCount / planLimit) * 100) : 0;
+  const data = q.data;
+  const loading = q.isLoading;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Greeting */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Welcome back{user?.firstName ? `, ${user.firstName}` : ""}
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Signed in to{" "}
-            <span className="font-medium text-foreground">{tenant?.name ?? "—"}</span>
-            {activeOrganization ? <> · {activeOrganization.name}</> : null}.
+          <p className="text-sm text-muted-foreground mt-1">
+            {tenant?.name ? <span className="font-medium text-foreground">{tenant.name}</span> : "—"}
+            {activeOrganization ? <> · {activeOrganization.name}</> : null}
+            {data?.generatedAt ? (
+              <span className="ml-2 text-xs text-muted-foreground/80">
+                · refreshed {new Date(data.generatedAt).toLocaleTimeString()}
+              </span>
+            ) : null}
           </p>
         </div>
-        <Link href="/dashboard/billing/subscription">
-          <Badge variant="muted" className="cursor-pointer hover:bg-accent gap-1.5">
-            <CreditCard className="h-3.5 w-3.5" />
-            {subQ.data?.planCode ?? "—"} plan
-            <ArrowUpRight className="h-3 w-3" />
-          </Badge>
-        </Link>
+        <button
+          type="button"
+          onClick={() => q.refetch()}
+          disabled={q.isFetching}
+          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-accent disabled:opacity-50"
+        >
+          <RefreshCcw className={`h-3 w-3 ${q.isFetching ? "animate-spin" : ""}`} />
+          {q.isFetching ? "Refreshing…" : "Refresh"}
+        </button>
       </div>
 
-      {/* Top metrics */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        <Metric
-          label="Team members"
-          value={userCount}
-          icon={Users}
-          loading={usersQ.isLoading}
-          hint={planLimit != null && planLimit > 0 ? `of ${planLimit} on ${subQ.data?.planCode ?? "plan"}` : undefined}
-          progress={planLimit != null && planLimit > 0 ? usagePct : undefined}
-          href="/dashboard/administrative/users"
-        />
-        <Metric
-          label="Roles"
-          value={roleCount}
-          icon={Lock}
-          loading={rolesQ.isLoading}
-          hint="Owner, Admin, Member by default"
-          href="/dashboard/administrative/roles"
-        />
-        <Metric
-          label="Subscription"
-          value={subQ.data?.planCode ?? "—"}
-          icon={CreditCard}
-          loading={subQ.isLoading}
-          hint={subQ.data?.status}
+      {q.isError && (
+        <Card>
+          <CardContent className="flex items-center gap-3 py-4 text-sm">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <span>Couldn&apos;t load dashboard data: {(q.error as Error).message}</span>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* KPI tiles */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KPITile
+          title="MRR"
+          value={data ? formatMoney(data.kpis.mrrCents) : "—"}
+          loading={loading}
+          subline="active subscriptions"
           href="/dashboard/billing/subscription"
         />
-        <Metric
-          label="Active features"
-          value={featuresQ.data ? Object.keys(featuresQ.data.features).length : 0}
-          icon={TrendingUp}
-          loading={featuresQ.isLoading}
-          hint="from your current plan"
+        <KPITile
+          title="Invoiced this month"
+          value={data ? formatMoney(data.kpis.invoicedThisMonthCents) : "—"}
+          deltaPct={data?.kpis.invoicedDeltaPct}
+          loading={loading}
+          subline="vs previous month"
+          href="/dashboard/billing/invoices"
+        />
+        <KPITile
+          title="Active users · 7d"
+          value={data ? formatNumber(data.kpis.activeUsers7d) : "—"}
+          deltaPct={data?.kpis.activeUsersDeltaPct}
+          loading={loading}
+          subline="vs previous week"
+          href="/dashboard/administrative/users"
+        />
+        <KPITile
+          title="Outstanding"
+          value={data ? formatMoney(data.kpis.outstandingDueCents) : "—"}
+          loading={loading}
+          subline={data ? `${data.kpis.openInvoiceCount} open invoice${data.kpis.openInvoiceCount === 1 ? "" : "s"}` : ""}
+          href="/dashboard/billing/invoices"
         />
       </div>
 
-      {/* Quick links */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Jump to</h2>
-        <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-          <QuickLink href="/dashboard/administrative/users" icon={Users} title="Manage users" sub="Invite teammates, suspend, archive" />
-          <QuickLink
-            href="/dashboard/administrative/roles"
-            icon={Lock}
-            title="Roles & permissions"
-            sub="Bundle permissions, assign to members"
-          />
-          <QuickLink
-            href="/dashboard/administrative/organizations"
-            icon={Building2}
-            title="Organizations"
-            sub="Manage workspaces inside your tenant"
-          />
-          <QuickLink
-            href="/dashboard/administrative/audit"
-            icon={Activity}
-            title="Audit log"
-            sub="Every API call, with filters and search"
-          />
-        </div>
-      </div>
-
-      {/* Tenant card */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Workspace details</h2>
-        <Card>
-          <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x">
-            <div className="p-6">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Tenant</div>
-              <div className="text-lg font-semibold">{tenant?.name ?? "—"}</div>
-              <div className="text-sm text-muted-foreground mt-1">/{tenant?.slug ?? "—"}</div>
-            </div>
-            <div className="p-6">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Active organization</div>
-              <div className="text-lg font-semibold">{activeOrganization?.name ?? "—"}</div>
-              <div className="text-sm text-muted-foreground mt-1">/{activeOrganization?.slug ?? "—"}</div>
-            </div>
-            <div className="p-6">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Signed in as</div>
-              <div className="text-lg font-semibold">{user?.displayName ?? user?.email}</div>
-              <div className="text-sm text-muted-foreground mt-1">{user?.email}</div>
-            </div>
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  icon: Icon,
-  hint,
-  href,
-  loading,
-  progress,
-}: {
-  label: string;
-  value: string | number;
-  icon: React.ComponentType<{ className?: string }>;
-  hint?: string;
-  href?: string;
-  loading?: boolean;
-  progress?: number;
-}) {
-  const card = (
-    <Card className={"group transition-shadow " + (href ? "hover:shadow-md cursor-pointer" : "")}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardDescription>{label}</CardDescription>
-          <Icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-        </div>
-        {loading ? (
-          <Skeleton className="h-9 w-24 mt-1" />
-        ) : (
-          <CardTitle className="text-3xl capitalize">{value}</CardTitle>
-        )}
-      </CardHeader>
-      {(hint || progress != null) && (
-        <CardContent className="space-y-2">
-          {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
-          {progress != null && (
-            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-              <div className="h-full bg-primary rounded-full" style={{ width: `${progress}%` }} />
-            </div>
-          )}
-        </CardContent>
-      )}
-    </Card>
-  );
-  return href ? <Link href={href}>{card}</Link> : card;
-}
-
-function QuickLink({
-  href,
-  icon: Icon,
-  title,
-  sub,
-}: {
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  sub: string;
-}) {
-  return (
-    <Link href={href} className="group">
-      <Card className="hover:border-primary/40 transition-colors">
+      {/* Revenue chart — full width because it's the headline business metric */}
+      <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-            <ArrowUpRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+            <div>
+              <CardTitle className="text-base">Revenue trend</CardTitle>
+              <CardDescription>Last 12 months · issued vs paid</CardDescription>
+            </div>
           </div>
-          <CardTitle className="text-base mt-3">{title}</CardTitle>
-          <CardDescription>{sub}</CardDescription>
         </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-[260px] w-full" />
+          ) : data ? (
+            <RevenueChart data={data.revenueByMonth} />
+          ) : null}
+        </CardContent>
       </Card>
-    </Link>
+
+      {/* Requests + status donut row */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Request activity</CardTitle>
+            <CardDescription>Last 14 days · audit-log signals</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[220px] w-full" />
+            ) : data ? (
+              <RequestsChart data={data.requestsByDay} />
+            ) : null}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">HTTP status mix</CardTitle>
+            <CardDescription>Last 14 days</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[220px] w-full" />
+            ) : data ? (
+              <StatusDonut data={data.statusBreakdown} />
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Top endpoints + invoice aging row */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Top endpoints</CardTitle>
+            <CardDescription>Most-called routes in the last 14 days</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[220px] w-full" />
+            ) : data ? (
+              <TopEndpoints rows={data.topEndpoints} />
+            ) : null}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Invoice aging</CardTitle>
+            <CardDescription>Open invoices by days past due</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[180px] w-full" />
+            ) : data ? (
+              <AgingChart data={data.invoiceAging} />
+            ) : null}
+            {data && data.kpis.outstandingDueCents > 0 && (
+              <div className="text-center text-xs text-muted-foreground mt-3">
+                Total due: <span className="font-medium text-foreground">{formatCompactMoney(data.kpis.outstandingDueCents)}</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent activity */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Recent activity</CardTitle>
+          <CardDescription>Latest audit events</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-[200px] w-full" />
+          ) : data ? (
+            <ActivityFeed entries={data.recentActivity} />
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
