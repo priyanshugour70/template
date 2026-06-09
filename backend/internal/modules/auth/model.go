@@ -176,10 +176,11 @@ type OrgSummary struct {
 }
 
 type UserSummary struct {
-	ID          uuid.UUID `json:"id"`
-	Email       string    `json:"email"`
-	DisplayName string    `json:"displayName,omitempty"`
-	FirstName   string    `json:"firstName,omitempty"`
-	LastName    string    `json:"lastName,omitempty"`
-	AvatarURL   string    `json:"avatarUrl,omitempty"`
+	ID           uuid.UUID `json:"id"`
+	Email        string    `json:"email"`
+	DisplayName  string    `json:"displayName,omitempty"`
+	FirstName    string    `json:"firstName,omitempty"`
+	LastName     string    `json:"lastName,omitempty"`
+	AvatarURL    string    `json:"avatarUrl,omitempty"`
+	IsSuperAdmin bool      `json:"isSuperAdmin"`
 }

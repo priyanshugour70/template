@@ -11,6 +11,7 @@ import {
 
 import { getSessionUser, clearSessionDisplayCookies } from "@/lib/cookies";
 import { authService } from "@/services/auth";
+import { useSessionStore } from "@/stores/session/session.store";
 import type { User } from "@/types/auth";
 
 interface AuthContextValue {
@@ -53,6 +54,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await authService.me();
       if (res.success && res.data) {
         setUser(res.data as unknown as User);
+        // /api/auth/me rewrote the session-user cookie with the latest fields
+        // (including isSuperAdmin). Re-hydrate the session store so the sidebar
+        // and permission gates pick up the fresh data — not the stale shape
+        // written at login time.
+        useSessionStore.getState().hydrate();
       } else {
         clearSessionDisplayCookies();
         setUser(null);
