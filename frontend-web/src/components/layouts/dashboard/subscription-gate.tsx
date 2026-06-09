@@ -26,7 +26,7 @@ export function SubscriptionGate({ children }: { children: ReactNode }) {
     if (isSuperAdmin) return;
     // Wait for the query to settle before deciding.
     if (subQ.isLoading) return;
-    if (!hasActive) router.replace("/onboarding/subscription");
+    if (!hasActive) router.replace("/onboarding/plan");
   }, [isSuperAdmin, subQ.isLoading, hasActive, router]);
 
   if (isSuperAdmin) return <>{children}</>;

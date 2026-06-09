@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { DashboardLayout } from "@/components/layouts/dashboard/DashboardLayout";
+import { OnboardingGate } from "@/components/layouts/dashboard/onboarding-gate";
 import { SubscriptionGate } from "@/components/layouts/dashboard/subscription-gate";
 import { useRequireAuth } from "@/hooks/auth/useRequireAuth";
 
@@ -17,7 +18,9 @@ export default function DashboardSegmentLayout({ children }: { children: ReactNo
   }
   return (
     <DashboardLayout>
-      <SubscriptionGate>{children}</SubscriptionGate>
+      <OnboardingGate>
+        <SubscriptionGate>{children}</SubscriptionGate>
+      </OnboardingGate>
     </DashboardLayout>
   );
 }

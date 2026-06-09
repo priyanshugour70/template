@@ -160,6 +160,12 @@ func (s *Service) GetRole(ctx context.Context, orgID, id uuid.UUID) (*Role, erro
 	return r, nil
 }
 
+// GetRoleByKey is the public service-level lookup that other modules can call
+// (e.g. auth → resolve role keys to UUIDs when creating an invite).
+func (s *Service) GetRoleByKey(ctx context.Context, orgID uuid.UUID, key string) (*Role, error) {
+	return s.repo.GetRoleByKey(ctx, orgID, strings.ToLower(key))
+}
+
 func (s *Service) ListRoles(ctx context.Context, orgID uuid.UUID) ([]Role, error) {
 	rows, err := s.repo.ListRoles(ctx, orgID)
 	if err != nil {

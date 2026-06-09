@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"go.uber.org/zap"
 
 	"github.com/your-org/your-service/internal/cache"
@@ -351,6 +352,18 @@ func (s *Service) Invite(ctx context.Context, req InviteRequest) (*Invite, strin
 	if err != nil {
 		return nil, "", apperr.New(apperr.CodeInternal, "generate token failed", err)
 	}
+	// Resolve role keys → uuid[] for the role_ids column (NOT NULL).
+	roleIDs := pq.StringArray{}
+	for _, k := range req.RoleKeys {
+		key := strings.ToLower(strings.TrimSpace(k))
+		if key == "" {
+			continue
+		}
+		r, rerr := s.rbacSvc.GetRoleByKey(ctx, req.OrganizationID, key)
+		if rerr == nil && r != nil {
+			roleIDs = append(roleIDs, r.ID.String())
+		}
+	}
 	inv := &Invite{
 		TenantID:       tid,
 		OrganizationID: req.OrganizationID,
@@ -360,6 +373,7 @@ func (s *Service) Invite(ctx context.Context, req InviteRequest) (*Invite, strin
 		JobTitle:       req.JobTitle,
 		Department:     req.Department,
 		TokenHash:      hash.SHA256(tokenStr),
+		RoleIDs:        roleIDs,
 		InvitedBy:      ptrUUID(appctx.UserID(ctx)),
 		Message:        req.Message,
 		Status:         "pending",
