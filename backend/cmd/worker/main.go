@@ -16,7 +16,7 @@ import (
 	"github.com/your-org/your-service/internal/config"
 	"github.com/your-org/your-service/internal/modules/audit"
 	"github.com/your-org/your-service/internal/modules/rbac"
-	"github.com/your-org/your-service/internal/modules/subscription"
+	"github.com/your-org/your-service/internal/modules/billing"
 	"github.com/your-org/your-service/internal/pkg/logger"
 	pkgmodel "github.com/your-org/your-service/internal/pkg/model"
 	"github.com/your-org/your-service/internal/queue"
@@ -84,7 +84,7 @@ func main() {
 	// ── Module services the worker needs (read-only or write-only) ─────────
 	auditM := audit.New(db, log)
 	rbacM := rbac.New(db, log, cacheSvc, producer)
-	subM := subscription.New(db, log, cacheSvc, producer)
+	subM := billing.New(db, log, cacheSvc, producer)
 
 	consumer := queue.NewRedisConsumer(queueRdb)
 
@@ -152,7 +152,7 @@ func permissionInvalidateHandler(svc *rbac.Service, log *zap.Logger) queue.Handl
 	}
 }
 
-func subscriptionInvalidateHandler(svc *subscription.Service, log *zap.Logger) queue.Handler {
+func subscriptionInvalidateHandler(svc *billing.Service, log *zap.Logger) queue.Handler {
 	return func(ctx context.Context, msg *queue.Message) error {
 		var payload struct {
 			OrgID string `json:"organizationId"`

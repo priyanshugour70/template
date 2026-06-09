@@ -1,4 +1,4 @@
-package subscription
+package billing
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/your-org/your-service/internal/cache"
+	"github.com/your-org/your-service/internal/modules/billing/pricing"
 	"github.com/your-org/your-service/internal/pkg/appctx"
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
 	"github.com/your-org/your-service/internal/queue"
@@ -28,6 +29,80 @@ type Service struct {
 
 func NewService(repo *Repository, log *zap.Logger, c cache.Cache, p queue.Producer) *Service {
 	return &Service{repo: repo, log: log, cache: c, producer: p}
+}
+
+// ── feature catalog ───────────────────────────────────────────────────────
+
+// ListFeatures returns the live feature catalog. Cached for 10 min in Redis.
+// Plan builder UI pulls this on every visit; the cache keeps the route hot.
+func (s *Service) ListFeatures(ctx context.Context) ([]Feature, error) {
+	rows, err := s.repo.ListFeatures(ctx)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeInternal, "list features failed", err)
+	}
+	return rows, nil
+}
+
+// PreviewQuote computes a quotation without persisting it. Drives the live
+// pricing panel as the user toggles features in the plan-builder UI.
+//
+// Resolution order:
+//  1. Load all active features into a catalog map.
+//  2. Load tax config (home state + rates).
+//  3. Pick the customer's billing state — req override → current subscription's
+//     stored billing_state → home state (defaults to intra-state CGST+SGST).
+//  4. Hand off to the pricing package (pure functions, fully unit-tested).
+func (s *Service) PreviewQuote(ctx context.Context, req PreviewQuoteRequest) (*pricing.Quote, error) {
+	rows, err := s.repo.ListFeatures(ctx)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeInternal, "load features failed", err)
+	}
+	catalog := make(map[string]pricing.Feature, len(rows))
+	for _, f := range rows {
+		catalog[f.Key] = pricing.Feature{
+			Key:               f.Key,
+			Name:              f.Name,
+			Description:       f.Description,
+			Category:          f.Category,
+			BasePriceCents:    f.BasePriceCents,
+			PerUserPriceCents: f.PerUserPriceCents,
+			IncludedUsers:     f.IncludedUsers,
+			IsCore:            f.IsCore,
+			Requires:          []string(f.Requires),
+			SortOrder:         f.SortOrder,
+		}
+	}
+
+	tax, err := s.repo.GetTaxConfig(ctx)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeInternal, "load tax config failed", err)
+	}
+
+	customerState := req.CustomerState
+	if customerState == "" {
+		// Future: fall back to the org's active subscription billing_state when
+		// one exists. For Phase 2 the preview-only endpoint defaults to home
+		// state (intra-state CGST+SGST).
+		customerState = tax.HomeState
+	}
+
+	q, err := pricing.BuildQuote(catalog, pricing.QuoteInput{
+		SelectedKeys:  req.FeatureKeys,
+		UserCount:     req.UserCount,
+		CustomerState: customerState,
+		HSNSAC:        tax.DefaultHSNSAC,
+		Currency:      tax.Currency,
+		Rates: pricing.Rates{
+			HomeState: tax.HomeState,
+			CGSTPct:   tax.DefaultCGSTPct,
+			SGSTPct:   tax.DefaultSGSTPct,
+			IGSTPct:   tax.DefaultIGSTPct,
+		},
+	})
+	if err != nil {
+		return nil, apperr.New(apperr.CodeValidation, err.Error(), err)
+	}
+	return &q, nil
 }
 
 // ── plans ──────────────────────────────────────────────────────────────────

@@ -3,8 +3,10 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -121,6 +123,50 @@ func (s *S3) Head(ctx context.Context, key string) (size int64, etag, mime strin
 		mime = *out.ContentType
 	}
 	return size, etag, mime, nil
+}
+
+// PutBytes uploads bytes directly from the server (no presigning). Used for
+// server-generated assets like invoice/receipt PDFs where the client never
+// touches the storage backend. Returns the resolved key (with prefix applied).
+func (s *S3) PutBytes(ctx context.Context, key, contentType string, body []byte) error {
+	if s == nil {
+		return fmt.Errorf("s3 client not configured")
+	}
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(body),
+		ContentType: aws.String(contentType),
+	})
+	if err != nil {
+		return fmt.Errorf("s3 put: %w", err)
+	}
+	return nil
+}
+
+// GetBytes fetches the full object body. Bounded by S3 single-request size
+// (5 GB). For larger streams use the underlying client + ranged reads.
+func (s *S3) GetBytes(ctx context.Context, key string) ([]byte, string, error) {
+	if s == nil {
+		return nil, "", fmt.Errorf("s3 client not configured")
+	}
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("s3 get: %w", err)
+	}
+	defer out.Body.Close()
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("s3 read body: %w", err)
+	}
+	contentType := ""
+	if out.ContentType != nil {
+		contentType = *out.ContentType
+	}
+	return body, contentType, nil
 }
 
 // Delete removes an object. Use sparingly — prefer marking file_uploads.status.

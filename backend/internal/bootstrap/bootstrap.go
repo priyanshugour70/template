@@ -29,7 +29,7 @@ import (
 	"github.com/your-org/your-service/internal/modules/webhook"
 	"github.com/your-org/your-service/internal/modules/notification"
 	"github.com/your-org/your-service/internal/modules/rbac"
-	"github.com/your-org/your-service/internal/modules/subscription"
+	"github.com/your-org/your-service/internal/modules/billing"
 	"github.com/your-org/your-service/internal/modules/tenant"
 	"github.com/your-org/your-service/internal/modules/user"
 	"github.com/your-org/your-service/internal/pkg/logger"
@@ -68,7 +68,7 @@ type API struct {
 	TenantSvc    *tenant.Service
 	UserSvc      *user.Service
 	RBACSvc      *rbac.Service
-	SubSvc       *subscription.Service
+	SubSvc       *billing.Service
 	AuditSvc     *audit.Service
 	AuthSvc      *auth.Service
 	NotifSvc     *notification.Service
@@ -238,7 +238,7 @@ func registerModules(
 	tenantM := tenant.New(db, log, cacheSvc)
 	userM := user.New(db, log, cacheSvc)
 	rbacM := rbac.New(db, log, cacheSvc, producer)
-	subM := subscription.New(db, log, cacheSvc, producer)
+	subM := billing.New(db, log, cacheSvc, producer)
 	auditM := audit.New(db, log)
 	notifM := notification.New(db, log)
 	// dept + group plug into rbac.Service for cache invalidation on role-binding changes.

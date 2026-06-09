@@ -1,4 +1,4 @@
-package subscription
+package billing
 
 import (
 	"context"
@@ -17,6 +17,51 @@ type Repository struct {
 func NewRepository(db *gorm.DB) *Repository { return &Repository{db: db} }
 
 func IsNotFound(err error) bool { return errors.Is(err, gorm.ErrRecordNotFound) }
+
+// ── feature catalog ───────────────────────────────────────────────────────
+
+// ListFeatures returns the full active feature catalog ordered by
+// (category, sort_order). Stable enough to drive UI grouping without
+// further client-side sorting.
+func (r *Repository) ListFeatures(ctx context.Context) ([]Feature, error) {
+	out := []Feature{}
+	if err := r.db.WithContext(ctx).
+		Where("is_active = true").
+		Order("category, sort_order, name").
+		Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetFeaturesByKeys is a small helper used by the quote builder to load only
+// the features it needs. Empty keys → empty result (caller treats as error).
+func (r *Repository) GetFeaturesByKeys(ctx context.Context, keys []string) ([]Feature, error) {
+	if len(keys) == 0 {
+		return []Feature{}, nil
+	}
+	out := []Feature{}
+	if err := r.db.WithContext(ctx).
+		Where("key IN ? AND is_active = true", keys).
+		Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ── tax config (singleton) ────────────────────────────────────────────────
+
+// GetTaxConfig fetches the single billing_tax_config row. Returns gorm.ErrRecordNotFound
+// if the migration hasn't been seeded (shouldn't happen in practice).
+func (r *Repository) GetTaxConfig(ctx context.Context) (*TaxConfig, error) {
+	var t TaxConfig
+	if err := r.db.WithContext(ctx).
+		Where("singleton = true").
+		First(&t).Error; err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
 
 // ── plans ──────────────────────────────────────────────────────────────────
 
@@ -106,10 +151,10 @@ func (r *Repository) Cancel(ctx context.Context, id uuid.UUID, reason string, im
 
 func (r *Repository) IncrementUsage(ctx context.Context, tenantID, orgID uuid.UUID, key string, by int64, periodStart, periodEnd time.Time) error {
 	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO usage_counters (id, tenant_id, organization_id, key, count, period_start, period_end, created_at, updated_at)
+		INSERT INTO billing_usage_counters (id, tenant_id, organization_id, key, count, period_start, period_end, created_at, updated_at)
 		VALUES (gen_random_uuid(), ?, ?, ?, ?, ?, ?, now(), now())
 		ON CONFLICT (organization_id, key, period_start)
-		DO UPDATE SET count = usage_counters.count + EXCLUDED.count, updated_at = now()
+		DO UPDATE SET count = billing_usage_counters.count + EXCLUDED.count, updated_at = now()
 	`, tenantID, orgID, key, by, periodStart, periodEnd).Error
 }
 

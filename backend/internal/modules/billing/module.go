@@ -1,4 +1,4 @@
-package subscription
+package billing
 
 import (
 	"go.uber.org/zap"

@@ -1,4 +1,4 @@
-package subscription
+package billing
 
 import (
 	"github.com/gin-gonic/gin"

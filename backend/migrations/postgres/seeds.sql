@@ -155,7 +155,9 @@ VALUES (
 ) ON CONFLICT DO NOTHING;
 
 -- ── seed subscription (Free plan, active) ────────────────────────────────
-INSERT INTO subscriptions (
+-- Table was renamed in migration 012 (subscription_plans → billing_plans,
+-- subscriptions → billing_subscriptions). Same column shape, new prefixes.
+INSERT INTO billing_subscriptions (
   id, tenant_id, organization_id, plan_id, plan_code,
   status, billing_cycle, quantity, unit_price_cents, total_cents, currency,
   started_at, current_period_start, current_period_end,
@@ -171,7 +173,7 @@ SELECT
   now(), now(), now() + interval '30 days',
   p.features, p.limits, '{"seeded": true}',
   now(), now()
-FROM subscription_plans p
+FROM billing_plans p
 WHERE p.code = 'free'
 ON CONFLICT (id) DO NOTHING;
 

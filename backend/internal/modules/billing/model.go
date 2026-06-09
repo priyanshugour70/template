@@ -1,9 +1,10 @@
-package subscription
+package billing
 
 import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 
 	"github.com/your-org/your-service/internal/pkg/model"
 )
@@ -34,7 +35,7 @@ type Plan struct {
 	ExternalRef    string      `                                       json:"externalRef,omitempty"`
 }
 
-func (Plan) TableName() string { return "subscription_plans" }
+func (Plan) TableName() string { return "billing_plans" }
 
 type Subscription struct {
 	model.Base
@@ -79,7 +80,7 @@ type Subscription struct {
 	Notes                 string      `                                        json:"notes,omitempty"`
 }
 
-func (Subscription) TableName() string { return "subscriptions" }
+func (Subscription) TableName() string { return "billing_subscriptions" }
 
 type UsageCounter struct {
 	model.Base
@@ -95,7 +96,7 @@ type UsageCounter struct {
 	Metadata       model.JSONB `gorm:"type:jsonb;default:'{}'::jsonb" json:"metadata"`
 }
 
-func (UsageCounter) TableName() string { return "usage_counters" }
+func (UsageCounter) TableName() string { return "billing_usage_counters" }
 
 // ── DTOs ───────────────────────────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ type Invoice struct {
 	Metadata         model.JSONB `gorm:"type:jsonb;default:'{}'::jsonb" json:"metadata"`
 }
 
-func (Invoice) TableName() string { return "subscription_invoices" }
+func (Invoice) TableName() string { return "billing_invoices" }
 
 // LineItem is the shape we serialize into Invoice.LineItems.
 type LineItem struct {
@@ -183,7 +184,7 @@ type Coupon struct {
 	Metadata        model.JSONB `gorm:"type:jsonb;default:'{}'::jsonb"   json:"metadata"`
 }
 
-func (Coupon) TableName() string { return "subscription_coupons" }
+func (Coupon) TableName() string { return "billing_coupons" }
 
 type CouponRedemption struct {
 	ID             uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
@@ -196,7 +197,69 @@ type CouponRedemption struct {
 	CreatedBy      *uuid.UUID `gorm:"type:uuid"                                       json:"createdBy,omitempty"`
 }
 
-func (CouponRedemption) TableName() string { return "coupon_redemptions" }
+func (CouponRedemption) TableName() string { return "billing_coupon_redemptions" }
+
+// ── Feature catalog ───────────────────────────────────────────────────────
+
+// Feature is one row of billing_features — the catalog of capabilities a
+// customer can pick from when building a custom plan.
+type Feature struct {
+	model.Base
+	Key                string         `gorm:"uniqueIndex;not null"           json:"key"`
+	Name               string         `gorm:"not null"                       json:"name"`
+	Description        string         `                                       json:"description"`
+	Category           string         `gorm:"not null"                       json:"category"` // core|admin|compliance|integrations|limits
+	BasePriceCents     int64          `gorm:"not null;default:0"             json:"basePriceCents"`
+	PerUserPriceCents  int64          `gorm:"not null;default:0"             json:"perUserPriceCents"`
+	IncludedUsers      int            `gorm:"not null;default:0"             json:"includedUsers"`
+	IsCore             bool           `gorm:"not null;default:false"         json:"isCore"`
+	IsStarterDefault   bool           `gorm:"not null;default:false"         json:"isStarterDefault"`
+	IsActive           bool           `gorm:"not null;default:true"          json:"isActive"`
+	Requires           pq.StringArray `gorm:"type:text[]"                    json:"requires"`
+	Metadata           model.JSONB    `gorm:"type:jsonb;default:'{}'::jsonb" json:"metadata,omitempty"`
+	SortOrder          int            `gorm:"not null;default:0"             json:"sortOrder"`
+}
+
+func (Feature) TableName() string { return "billing_features" }
+
+// TaxConfig is the singleton row in billing_tax_config that holds the
+// company's GSTIN + home state + default GST rates + bank details for invoices.
+type TaxConfig struct {
+	ID                uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Singleton         bool      `gorm:"not null;default:true"                          json:"-"`
+	CompanyName       string    `gorm:"not null;default:''"                            json:"companyName"`
+	CompanyAddress    string    `gorm:"not null;default:''"                            json:"companyAddress"`
+	GSTIN             string    `gorm:"not null;default:''"                            json:"gstin"`
+	HomeState         string    `gorm:"not null;default:Karnataka"                     json:"homeState"`
+	DefaultCGSTPct    float64   `gorm:"column:default_cgst_pct;type:numeric(5,2)"      json:"defaultCgstPct"`
+	DefaultSGSTPct    float64   `gorm:"column:default_sgst_pct;type:numeric(5,2)"      json:"defaultSgstPct"`
+	DefaultIGSTPct    float64   `gorm:"column:default_igst_pct;type:numeric(5,2)"      json:"defaultIgstPct"`
+	DefaultHSNSAC     string    `gorm:"column:default_hsn_sac;not null;default:'998314'" json:"defaultHsnSac"`
+	Currency          string    `gorm:"not null;default:INR"                           json:"currency"`
+	BankName          string    `gorm:"not null;default:''"                            json:"bankName"`
+	BankAccountNumber string    `gorm:"not null;default:''"                            json:"bankAccountNumber"`
+	BankIFSC          string    `gorm:"column:bank_ifsc;not null;default:''"           json:"bankIfsc"`
+	BankAccountName   string    `gorm:"not null;default:''"                            json:"bankAccountName"`
+	InvoiceTerms      string    `gorm:"not null;default:''"                            json:"invoiceTerms"`
+	Metadata          model.JSONB `gorm:"type:jsonb;default:'{}'::jsonb"               json:"metadata,omitempty"`
+	CreatedAt         time.Time `gorm:"not null;default:now()"                         json:"createdAt"`
+	UpdatedAt         time.Time `gorm:"not null;default:now()"                         json:"updatedAt"`
+}
+
+func (TaxConfig) TableName() string { return "billing_tax_config" }
+
+// ── Quotation preview DTO ─────────────────────────────────────────────────
+
+// PreviewQuoteRequest is the input to POST /billing/quotations/preview. Same
+// shape gets re-used by POST /billing/quotations when we persist the draft in
+// Phase 3.
+type PreviewQuoteRequest struct {
+	FeatureKeys   []string `json:"featureKeys"             binding:"required"`
+	UserCount     int      `json:"userCount"               binding:"required,min=1"`
+	// CustomerState drives the CGST/SGST vs IGST decision. Optional — if
+	// blank, falls back to billing_tax_config.home_state (intra-state default).
+	CustomerState string   `json:"customerState,omitempty" binding:"omitempty,max=64"`
+}
 
 // ── DTOs (lifecycle) ──────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-package subscription
+package billing
 
 import (
 	"fmt"
@@ -24,25 +24,37 @@ func NewHandler(svc *Service, log *zap.Logger) *Handler { return &Handler{svc: s
 type PermissionFunc func(perm string) gin.HandlerFunc
 
 func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm PermissionFunc) {
+	// Legacy route paths kept while Phase 8 hasn't shipped the frontend rewrite.
+	// All `subscription.*` permission keys were renamed to `billing.*` in
+	// migration 012, so we point the guards at the new keys.
 	plans := g.Group("/subscription-plans", auth)
 	{
 		plans.GET("", h.listPlans)
 	}
 	sub := g.Group("/subscriptions", auth)
 	{
-		sub.GET("/active", perm("subscription.read"), h.getActive)
-		sub.POST("/change", perm("subscription.update"), h.changePlan)
-		sub.POST("/preview-change", perm("subscription.read"), h.previewChange)
-		sub.POST("/cancel", perm("subscription.cancel"), h.cancel)
-		sub.POST("/reactivate", perm("subscription.update"), h.reactivate)
-		sub.POST("/pause", perm("subscription.pause"), h.pause)
-		sub.POST("/resume", perm("subscription.pause"), h.resume)
-		sub.PATCH("/billing", perm("subscription.update"), h.updateBilling)
+		sub.GET("/active", perm("billing.read"), h.getActive)
+		sub.POST("/change", perm("billing.manage"), h.changePlan)
+		sub.POST("/preview-change", perm("billing.read"), h.previewChange)
+		sub.POST("/cancel", perm("billing.cancel"), h.cancel)
+		sub.POST("/reactivate", perm("billing.manage"), h.reactivate)
+		// Pause/resume are deprecated and dropped from the new model. The
+		// permission no longer exists, so wiring them up would 500 the request.
+		sub.PATCH("/billing", perm("billing.manage"), h.updateBilling)
 		sub.GET("/features", h.featureSet)
-		sub.GET("/usage", perm("subscription.read"), h.listUsage)
-		sub.GET("/invoices", perm("invoice.read"), h.listInvoices)
-		sub.GET("/invoices/:id", perm("invoice.read"), h.getInvoice)
-		sub.POST("/coupons/validate", perm("subscription.read"), h.validateCoupon)
+		sub.GET("/usage", perm("billing.read"), h.listUsage)
+		sub.GET("/invoices", perm("billing.invoice.read"), h.listInvoices)
+		sub.GET("/invoices/:id", perm("billing.invoice.read"), h.getInvoice)
+		sub.POST("/coupons/validate", perm("billing.read"), h.validateCoupon)
+	}
+
+	// New billing routes (Phase 2). The frontend will move to /api/v1/billing/*
+	// in Phase 8; until then the legacy /subscription-plans + /subscriptions
+	// routes above stay as aliases.
+	bill := g.Group("/billing", auth)
+	{
+		bill.GET("/features", perm("billing.read"), h.listFeatures)
+		bill.POST("/quotations/preview", perm("billing.read"), h.previewQuote)
 	}
 }
 
@@ -269,4 +281,29 @@ func (h *Handler) validateCoupon(c *gin.Context) {
 		return
 	}
 	response.OK(c, h.svc.ValidateCoupon(c.Request.Context(), req))
+}
+
+// ── catalog + quote preview (Phase 2) ─────────────────────────────────────
+
+func (h *Handler) listFeatures(c *gin.Context) {
+	rows, err := h.svc.ListFeatures(c.Request.Context())
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, rows)
+}
+
+func (h *Handler) previewQuote(c *gin.Context) {
+	var req PreviewQuoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
+		return
+	}
+	q, err := h.svc.PreviewQuote(c.Request.Context(), req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, q)
 }
