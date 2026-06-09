@@ -1,0 +1,41 @@
+# Anything in creds/ is by definition a secret — never check this in.
+# Push protection caught a leak here once; .gitignore exists so it can't repeat.
+creds/
+
+# Local env files. .env.example is the only env file that ever gets committed.
+.env
+.env.local
+.env.*.local
+*.env.local
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Backend (Go)
+backend/logs/
+backend/tmp/
+backend/dist/
+backend/bin/
+backend/coverage.*
+
+# Frontend (Node/Next.js)
+node_modules/
+frontend-web/.next/
+frontend-web/out/
+frontend-web/.turbo/
+frontend-web/coverage/
+frontend-web/.eslintcache
+frontend-web/tsconfig.tsbuildinfo
+frontend-app/node_modules/
+frontend-app/.expo/
+
+# pnpm
+.pnpm-store/
+
+# Temp / scratch
+*.log
+*.tmp
+*.swp
