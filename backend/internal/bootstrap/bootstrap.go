@@ -33,8 +33,10 @@ import (
 	"github.com/your-org/your-service/internal/modules/tenant"
 	"github.com/your-org/your-service/internal/modules/user"
 	"github.com/your-org/your-service/internal/pkg/logger"
+	"github.com/your-org/your-service/internal/pkg/mail"
 	pkgmodel "github.com/your-org/your-service/internal/pkg/model"
 	"github.com/your-org/your-service/internal/pkg/response"
+	"github.com/your-org/your-service/internal/pkg/storage"
 	"github.com/your-org/your-service/internal/queue"
 	"github.com/your-org/your-service/internal/repository"
 )
@@ -234,11 +236,32 @@ func registerModules(
 	cacheSvc cache.Cache,
 	out *API,
 ) {
+	// S3 — optional. nil when bucket/region aren't configured; PDF endpoints
+	// handle the nil case with a 503-style error so dev environments without
+	// AWS keep working.
+	s3Client, err := storage.NewS3(context.Background(), cfg.Assets)
+	if err != nil {
+		log.Warn("S3 init failed; PDF endpoints will return 503", zap.Error(err))
+	} else if s3Client != nil {
+		log.Info("S3 ready", zap.String("bucket", s3Client.Bucket()))
+	}
+
+	// Mail sender — every transactional email (invites, password resets,
+	// welcome, payment receipts) goes through this single Sender. Falls back
+	// to NoopSender when SMTP host/username are unset, so dev environments
+	// without an SMTP relay still boot cleanly.
+	mailer := mail.NewSender(cfg.SMTP)
+	if mail.IsNoop(mailer) {
+		log.Info("mail sender: noop (SMTP host/username not set)")
+	} else {
+		log.Info("mail sender: SMTP", zap.String("host", cfg.SMTP.Host))
+	}
+
 	// Build module composition roots.
 	tenantM := tenant.New(db, log, cacheSvc)
 	userM := user.New(db, log, cacheSvc)
 	rbacM := rbac.New(db, log, cacheSvc, producer)
-	subM := billing.New(db, log, cacheSvc, producer)
+	subM := billing.New(db, log, cacheSvc, producer, s3Client, tenantM.Service, mailer)
 	auditM := audit.New(db, log)
 	notifM := notification.New(db, log)
 	// dept + group plug into rbac.Service for cache invalidation on role-binding changes.

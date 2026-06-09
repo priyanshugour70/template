@@ -63,6 +63,186 @@ func (r *Repository) GetTaxConfig(ctx context.Context) (*TaxConfig, error) {
 	return &t, nil
 }
 
+// ── quotations ────────────────────────────────────────────────────────────
+
+// NextQuotationNumber issues a monotonically-increasing number per (tenant, year)
+// formatted QUO-YYYY-NNNNNN. Counting all rows (incl. soft-deleted) keeps the
+// sequence gap-free even when a draft is rejected/deleted.
+func (r *Repository) NextQuotationNumber(ctx context.Context, tenantID uuid.UUID, year int) (string, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).
+		Table("billing_quotations").
+		Where("tenant_id = ? AND EXTRACT(YEAR FROM created_at) = ?", tenantID, year).
+		Count(&n).Error; err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("QUO-%04d-%06d", year, n+1), nil
+}
+
+func (r *Repository) CreateQuotation(ctx context.Context, q *Quotation) error {
+	return r.db.WithContext(ctx).Create(q).Error
+}
+
+func (r *Repository) GetQuotation(ctx context.Context, orgID, id uuid.UUID) (*Quotation, error) {
+	var q Quotation
+	tx := r.db.WithContext(ctx).Where("id = ?", id)
+	if orgID != uuid.Nil {
+		tx = tx.Where("organization_id = ?", orgID)
+	}
+	if err := tx.First(&q).Error; err != nil {
+		return nil, err
+	}
+	return &q, nil
+}
+
+func (r *Repository) ListQuotations(ctx context.Context, orgID uuid.UUID, status string, limit, offset int) ([]Quotation, int64, error) {
+	q := r.db.WithContext(ctx).Model(&Quotation{}).Where("organization_id = ?", orgID)
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	out := []Quotation{}
+	tx := q.Order("created_at DESC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
+func (r *Repository) UpdateQuotation(ctx context.Context, id uuid.UUID, patch map[string]interface{}) error {
+	if len(patch) == 0 {
+		return nil
+	}
+	res := r.db.WithContext(ctx).Model(&Quotation{}).Where("id = ?", id).Updates(patch)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (r *Repository) DeleteQuotation(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Delete(&Quotation{}, "id = ?", id).Error
+}
+
+// ── plans (Phase 3 custom plan creation) ──────────────────────────────────
+
+func (r *Repository) CreatePlan(ctx context.Context, p *Plan) error {
+	return r.db.WithContext(ctx).Create(p).Error
+}
+
+func (r *Repository) CreatePlanFeatures(ctx context.Context, rows []PlanFeature) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Create(&rows).Error
+}
+
+func (r *Repository) ListPlanFeatures(ctx context.Context, planID uuid.UUID) ([]PlanFeature, error) {
+	out := []PlanFeature{}
+	if err := r.db.WithContext(ctx).
+		Where("plan_id = ?", planID).
+		Order("feature_key").
+		Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ── subscriptions (creation for activation flow) ──────────────────────────
+
+func (r *Repository) CreateSubscription(ctx context.Context, sub *Subscription) error {
+	return r.db.WithContext(ctx).Create(sub).Error
+}
+
+// ── invoice lines (relational copy alongside JSONB line_items) ────────────
+
+func (r *Repository) CreateInvoiceLines(ctx context.Context, rows []InvoiceLine) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Create(&rows).Error
+}
+
+func (r *Repository) ListInvoiceLines(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceLine, error) {
+	out := []InvoiceLine{}
+	if err := r.db.WithContext(ctx).
+		Where("invoice_id = ?", invoiceID).
+		Order("sort_order, created_at").
+		Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ── transactions ──────────────────────────────────────────────────────────
+
+// NextReceiptNumber issues monotonically-increasing RCP-YYYY-NNNNNN. Counts
+// existing rows (incl. soft-deleted) within the tenant + year so the sequence
+// is gap-free even if a transaction is rolled back later.
+func (r *Repository) NextReceiptNumber(ctx context.Context, tenantID uuid.UUID, year int) (string, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).
+		Table("billing_transactions").
+		Where("tenant_id = ? AND EXTRACT(YEAR FROM created_at) = ?", tenantID, year).
+		Count(&n).Error; err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("RCP-%04d-%06d", year, n+1), nil
+}
+
+func (r *Repository) CreateTransaction(ctx context.Context, t *Transaction) error {
+	return r.db.WithContext(ctx).Create(t).Error
+}
+
+func (r *Repository) GetTransaction(ctx context.Context, orgID, id uuid.UUID) (*Transaction, error) {
+	var t Transaction
+	q := r.db.WithContext(ctx).Where("id = ?", id)
+	if orgID != uuid.Nil {
+		q = q.Where("organization_id = ?", orgID)
+	}
+	if err := q.First(&t).Error; err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (r *Repository) ListTransactions(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]Transaction, int64, error) {
+	q := r.db.WithContext(ctx).Model(&Transaction{}).Where("organization_id = ?", orgID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	out := []Transaction{}
+	tx := q.Order("paid_at DESC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
+func (r *Repository) UpdateTransaction(ctx context.Context, id uuid.UUID, patch map[string]interface{}) error {
+	if len(patch) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Model(&Transaction{}).Where("id = ?", id).Updates(patch).Error
+}
+
+// ── DB() exposes the underlying *gorm.DB for service-layer transactions ──
+
+func (r *Repository) DB() *gorm.DB { return r.db }
+
 // ── plans ──────────────────────────────────────────────────────────────────
 
 func (r *Repository) ListActivePlans(ctx context.Context, limit, offset int) ([]Plan, int64, error) {
@@ -206,12 +386,26 @@ func (r *Repository) ListInvoices(ctx context.Context, orgID uuid.UUID, limit in
 
 func (r *Repository) GetInvoice(ctx context.Context, orgID, id uuid.UUID) (*Invoice, error) {
 	var inv Invoice
-	if err := r.db.WithContext(ctx).
-		Where("id = ? AND organization_id = ?", id, orgID).
-		First(&inv).Error; err != nil {
+	q := r.db.WithContext(ctx).Where("id = ?", id)
+	if orgID != uuid.Nil {
+		q = q.Where("organization_id = ?", orgID)
+	}
+	if err := q.First(&inv).Error; err != nil {
 		return nil, err
 	}
 	return &inv, nil
+}
+
+// UpdateInvoice patches arbitrary columns. Used by the PDF flow to persist
+// the storage key, and by Phase 5 to mark invoices paid.
+func (r *Repository) UpdateInvoice(ctx context.Context, id uuid.UUID, patch map[string]interface{}) error {
+	if len(patch) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Model(&Invoice{}).
+		Where("id = ?", id).
+		Updates(patch).Error
 }
 
 // NextInvoiceNumber issues a monotonically-increasing per-tenant invoice

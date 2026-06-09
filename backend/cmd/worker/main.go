@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,9 +18,10 @@ import (
 	"github.com/your-org/your-service/internal/cache"
 	"github.com/your-org/your-service/internal/config"
 	"github.com/your-org/your-service/internal/modules/audit"
-	"github.com/your-org/your-service/internal/modules/rbac"
 	"github.com/your-org/your-service/internal/modules/billing"
+	"github.com/your-org/your-service/internal/modules/rbac"
 	"github.com/your-org/your-service/internal/pkg/logger"
+	"github.com/your-org/your-service/internal/pkg/mail"
 	pkgmodel "github.com/your-org/your-service/internal/pkg/model"
 	"github.com/your-org/your-service/internal/queue"
 	"github.com/your-org/your-service/internal/repository"
@@ -81,10 +85,21 @@ func main() {
 	cacheSvc := cache.NewRedisCache(cacheRdb)
 	producer := queue.NewRedisProducer(queueRdb)
 
+	// Mail sender — same NewSender as the API. NoopSender when SMTP host /
+	// username aren't configured so dev workers still run without spamming.
+	mailer := mail.NewSender(cfg.SMTP)
+	if mail.IsNoop(mailer) {
+		log.Info("worker mail sender: noop (SMTP host/username not set)")
+	} else {
+		log.Info("worker mail sender: SMTP", zap.String("host", cfg.SMTP.Host))
+	}
+
 	// ── Module services the worker needs (read-only or write-only) ─────────
 	auditM := audit.New(db, log)
 	rbacM := rbac.New(db, log, cacheSvc, producer)
-	subM := billing.New(db, log, cacheSvc, producer)
+	// Billing service is wired for cache-invalidation + future cycle/trial
+	// jobs. S3 + tenantSvc stay nil because the worker doesn't render PDFs.
+	subM := billing.New(db, log, cacheSvc, producer, nil, nil, mailer)
 
 	consumer := queue.NewRedisConsumer(queueRdb)
 
@@ -99,11 +114,15 @@ func main() {
 	go runConsumer(ctx, consumer, queue.ChannelSubscriptionInvalidate,
 		subscriptionInvalidateHandler(subM.Service, log), log)
 
-	// invite + password-reset email channels — wire to your mailer here. For now
-	// the worker only logs them so events aren't lost.
-	go runConsumer(ctx, consumer, queue.ChannelInviteEmail, logHandler("invite.email", log), log)
-	go runConsumer(ctx, consumer, queue.ChannelPasswordResetEmail, logHandler("password_reset.email", log), log)
-	go runConsumer(ctx, consumer, queue.ChannelUserWelcomeEmail, logHandler("user.welcome.email", log), log)
+	// Transactional email consumers — each one decodes the publisher's
+	// payload, builds the template, and dispatches via the shared Sender.
+	// Falls back to NoopSender locally so we just log on dev.
+	go runConsumer(ctx, consumer, queue.ChannelInviteEmail,
+		inviteEmailHandler(mailer, cfg, log), log)
+	go runConsumer(ctx, consumer, queue.ChannelPasswordResetEmail,
+		passwordResetEmailHandler(mailer, log), log)
+	go runConsumer(ctx, consumer, queue.ChannelUserWelcomeEmail,
+		welcomeEmailHandler(mailer, log), log)
 	go runConsumer(ctx, consumer, queue.ChannelNotifications, logHandler("notifications", log), log)
 	go runConsumer(ctx, consumer, queue.ChannelSearchSync, logHandler("search.sync", log), log)
 
@@ -137,7 +156,6 @@ func permissionInvalidateHandler(svc *rbac.Service, log *zap.Logger) queue.Handl
 			log.Warn("permission invalidate decode failed", zap.Error(err))
 			return nil
 		}
-		// If a (user, org) pair is provided, invalidate that key directly.
 		if payload.UserID != "" && payload.OrgID != "" {
 			uid, err1 := uuid.Parse(payload.UserID)
 			oid, err2 := uuid.Parse(payload.OrgID)
@@ -145,9 +163,6 @@ func permissionInvalidateHandler(svc *rbac.Service, log *zap.Logger) queue.Handl
 				svc.InvalidateUserOrgCache(ctx, uid, oid)
 			}
 		}
-		// Broader invalidations (role change, membership change) are best-effort:
-		// the cache entries will expire naturally within TTL. A full sweep
-		// implementation would query membership_roles and delete each cache key.
 		return nil
 	}
 }
@@ -170,9 +185,150 @@ func subscriptionInvalidateHandler(svc *billing.Service, log *zap.Logger) queue.
 	}
 }
 
+// inviteEmailHandler decodes auth.publishInviteEmail payloads and sends the
+// invitation template. The accept URL is built from the password-reset base
+// URL's origin (e.g. http://localhost:3000) + /auth/accept-invite, with the
+// token + email in the query string. Centralizing the URL here keeps the
+// auth service free of frontend-path knowledge.
+func inviteEmailHandler(mailer mail.Sender, cfg *config.Config, log *zap.Logger) queue.Handler {
+	return func(_ context.Context, msg *queue.Message) error {
+		var p struct {
+			InviteID       string `json:"inviteId"`
+			Email          string `json:"email"`
+			Token          string `json:"token"`
+			OrganizationID string `json:"organizationId"`
+			TenantID       string `json:"tenantId"`
+		}
+		if err := json.Unmarshal([]byte(msg.Payload), &p); err != nil {
+			log.Warn("invite email decode failed", zap.Error(err))
+			return nil
+		}
+		if p.Email == "" || p.Token == "" {
+			log.Warn("invite email missing email or token", zap.String("inviteId", p.InviteID))
+			return nil
+		}
+		// Treat password reset base URL's origin as the frontend root. The
+		// invite UX lives under /auth/accept-invite — adjust if your frontend
+		// uses a different path.
+		acceptURL := buildFrontendURL(cfg.Auth.PasswordResetBaseURL, "/auth/accept-invite", map[string]string{
+			"token": p.Token,
+			"email": p.Email,
+		})
+		// 7-day expiry is the auth module's default; render UTC for clarity.
+		expiresAt := time.Now().Add(7 * 24 * time.Hour).UTC().Format("02 Jan 2006 15:04 MST")
+		body := mail.EmailInvitation(acceptURL, expiresAt, "")
+		if err := mailer.Send(p.Email, "You're invited", body); err != nil {
+			log.Warn("invite email send failed", zap.Error(err), zap.String("to", p.Email))
+			return err
+		}
+		log.Info("invite email dispatched", zap.String("to", p.Email))
+		return nil
+	}
+}
+
+// passwordResetEmailHandler decodes the publisher's payload, builds the reset
+// URL ({baseUrl}?token=...) and dispatches the template.
+func passwordResetEmailHandler(mailer mail.Sender, log *zap.Logger) queue.Handler {
+	return func(_ context.Context, msg *queue.Message) error {
+		var p struct {
+			UserID  string `json:"userId"`
+			Email   string `json:"email"`
+			Token   string `json:"token"`
+			BaseURL string `json:"baseUrl"`
+		}
+		if err := json.Unmarshal([]byte(msg.Payload), &p); err != nil {
+			log.Warn("password reset email decode failed", zap.Error(err))
+			return nil
+		}
+		if p.Email == "" || p.Token == "" {
+			log.Warn("password reset email missing email or token")
+			return nil
+		}
+		base := strings.TrimSpace(p.BaseURL)
+		if base == "" {
+			base = "http://localhost:3000/reset-password"
+		}
+		resetURL := appendQuery(base, "token", p.Token)
+		body := mail.EmailPasswordReset(resetURL)
+		if err := mailer.Send(p.Email, "Reset your password", body); err != nil {
+			log.Warn("password reset email send failed", zap.Error(err), zap.String("to", p.Email))
+			return err
+		}
+		log.Info("password reset email dispatched", zap.String("to", p.Email))
+		return nil
+	}
+}
+
+// welcomeEmailHandler dispatches the welcome template on first sign-in.
+func welcomeEmailHandler(mailer mail.Sender, log *zap.Logger) queue.Handler {
+	return func(_ context.Context, msg *queue.Message) error {
+		var p struct {
+			UserID      string `json:"userId,omitempty"`
+			Email       string `json:"email"`
+			DisplayName string `json:"displayName,omitempty"`
+		}
+		if err := json.Unmarshal([]byte(msg.Payload), &p); err != nil {
+			log.Warn("welcome email decode failed", zap.Error(err))
+			return nil
+		}
+		if p.Email == "" {
+			log.Warn("welcome email missing recipient")
+			return nil
+		}
+		body := mail.EmailWelcome(p.DisplayName)
+		if err := mailer.Send(p.Email, "Welcome aboard", body); err != nil {
+			log.Warn("welcome email send failed", zap.Error(err), zap.String("to", p.Email))
+			return err
+		}
+		log.Info("welcome email dispatched", zap.String("to", p.Email))
+		return nil
+	}
+}
+
 func logHandler(name string, log *zap.Logger) queue.Handler {
 	return func(_ context.Context, msg *queue.Message) error {
 		log.Info("worker received message", zap.String("channel", name), zap.String("payload", msg.Payload))
 		return nil
 	}
+}
+
+// buildFrontendURL combines a reference URL's origin with a fresh path + query.
+// Used to derive the invite accept URL from the password-reset base URL — they
+// share the same frontend origin.
+func buildFrontendURL(refURL, path string, params map[string]string) string {
+	u, err := url.Parse(refURL)
+	if err != nil || u.Scheme == "" {
+		return fmt.Sprintf("http://localhost:3000%s?%s", path, encodeParams(params))
+	}
+	u.Path = path
+	q := u.Query()
+	for k, v := range params {
+		q.Set(k, v)
+	}
+	u.RawQuery = q.Encode()
+	u.Fragment = ""
+	return u.String()
+}
+
+func appendQuery(rawURL, key, value string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" {
+		sep := "?"
+		if strings.Contains(rawURL, "?") {
+			sep = "&"
+		}
+		return rawURL + sep + url.QueryEscape(key) + "=" + url.QueryEscape(value)
+	}
+	q := u.Query()
+	q.Set(key, value)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func encodeParams(p map[string]string) string {
+	v := url.Values{}
+	for k, val := range p {
+		v.Set(k, val)
+	}
+	return v.Encode()
 }

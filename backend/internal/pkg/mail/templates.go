@@ -133,3 +133,57 @@ func EmailPasswordReset(resetLink string) string {
 	inner.WriteString(cardFooter("If you didn't request a password reset, no action is needed."))
 	return transactionalShell("Reset your password.", inner.String())
 }
+
+// EmailWelcome — first sign-in landed; sent on tenant creation / first invite
+// acceptance. Lightweight, no buttons.
+func EmailWelcome(displayName string) string {
+	greeting := "Welcome aboard"
+	if strings.TrimSpace(displayName) != "" {
+		greeting = "Welcome, " + displayName
+	}
+	inner := strings.Builder{}
+	inner.WriteString(brandAndHeading(BrandName, greeting))
+	inner.WriteString(proseParagraph("Your account is ready. Sign in any time to manage your workspace, invite teammates, and configure billing."))
+	inner.WriteString(cardFooter("Questions? Reply to this email and we'll help."))
+	return transactionalShell("Welcome to "+BrandName, inner.String())
+}
+
+// EmailPaymentReceipt — sent when a payment is recorded against an invoice.
+// The receipt PDF is the attachment; this is the cover email.
+func EmailPaymentReceipt(receiptNumber, invoiceNumber, amountFormatted, method, paidAt string) string {
+	inner := strings.Builder{}
+	inner.WriteString(brandAndHeading(BrandName, "Payment received"))
+	inner.WriteString(proseParagraph(fmt.Sprintf(
+		"Thanks — we received your payment of %s on %s against invoice %s. Receipt %s is attached as a PDF for your records.",
+		amountFormatted, paidAt, invoiceNumber, receiptNumber)))
+	inner.WriteString(fmt.Sprintf(
+		`<tr><td style="padding:0 40px 24px 40px;font-family:%s;font-size:14px;color:%s;">
+<table role="presentation" cellspacing="0" cellpadding="0" width="100%%" style="border:1px solid %s;border-radius:8px;">
+<tr><td style="padding:14px 16px;border-bottom:1px solid %s;"><strong style="color:%s;">Receipt #</strong> <span style="color:%s;">%s</span></td></tr>
+<tr><td style="padding:14px 16px;border-bottom:1px solid %s;"><strong style="color:%s;">Invoice</strong> <span style="color:%s;">%s</span></td></tr>
+<tr><td style="padding:14px 16px;border-bottom:1px solid %s;"><strong style="color:%s;">Amount</strong> <span style="color:%s;">%s</span></td></tr>
+<tr><td style="padding:14px 16px;"><strong style="color:%s;">Method</strong> <span style="color:%s;">%s</span></td></tr>
+</table>
+</td></tr>`,
+		fontSans, colorBody, colorBorder,
+		colorBorder, colorInk, colorBody, html.EscapeString(receiptNumber),
+		colorBorder, colorInk, colorBody, html.EscapeString(invoiceNumber),
+		colorBorder, colorInk, colorBody, html.EscapeString(amountFormatted),
+		colorInk, colorBody, html.EscapeString(method)))
+	inner.WriteString(cardFooter("Reply to this email if anything looks off."))
+	return transactionalShell("Receipt "+receiptNumber, inner.String())
+}
+
+// EmailInvoiceIssued — sent when a new cycle invoice is generated.
+func EmailInvoiceIssued(invoiceNumber, dueDate, amountFormatted, viewLink string) string {
+	inner := strings.Builder{}
+	inner.WriteString(brandAndHeading(BrandName, "New invoice: "+invoiceNumber))
+	inner.WriteString(proseParagraph(fmt.Sprintf(
+		"Your latest invoice for %s is due on %s. The full PDF is attached. You can also view and pay it online.",
+		amountFormatted, dueDate)))
+	if viewLink != "" {
+		inner.WriteString(primaryButton(viewLink, "View invoice"))
+	}
+	inner.WriteString(cardFooter("Need a copy or have questions? Reply to this email."))
+	return transactionalShell("Invoice "+invoiceNumber+" — "+amountFormatted, inner.String())
+}

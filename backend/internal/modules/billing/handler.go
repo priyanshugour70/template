@@ -48,13 +48,31 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 		sub.POST("/coupons/validate", perm("billing.read"), h.validateCoupon)
 	}
 
-	// New billing routes (Phase 2). The frontend will move to /api/v1/billing/*
-	// in Phase 8; until then the legacy /subscription-plans + /subscriptions
-	// routes above stay as aliases.
+	// New billing routes (Phase 2 + Phase 3). The frontend will move to
+	// /api/v1/billing/* in Phase 8; until then the legacy /subscription-plans
+	// + /subscriptions routes above stay as aliases.
 	bill := g.Group("/billing", auth)
 	{
 		bill.GET("/features", perm("billing.read"), h.listFeatures)
 		bill.POST("/quotations/preview", perm("billing.read"), h.previewQuote)
+
+		// Quotation lifecycle (Phase 3).
+		bill.GET("/quotations", perm("billing.quotation.read"), h.listQuotations)
+		bill.POST("/quotations", perm("billing.quotation.manage"), h.createQuotation)
+		bill.GET("/quotations/:id", perm("billing.quotation.read"), h.getQuotation)
+		bill.PATCH("/quotations/:id", perm("billing.quotation.manage"), h.updateQuotation)
+		bill.DELETE("/quotations/:id", perm("billing.quotation.manage"), h.deleteQuotation)
+		bill.POST("/quotations/:id/activate", perm("billing.quotation.manage"), h.activateQuotation)
+
+		// Invoice PDF (Phase 4). Full /invoices/* CRUD migrates from
+		// /subscriptions/invoices in Phase 8.
+		bill.GET("/invoices/:id/pdf", perm("billing.invoice.read"), h.getInvoicePDF)
+
+		// Payments + receipts (Phase 5).
+		bill.POST("/invoices/:id/pay", perm("billing.invoice.pay"), h.recordPayment)
+		bill.GET("/transactions", perm("billing.transaction.read"), h.listTransactions)
+		bill.GET("/transactions/:id", perm("billing.transaction.read"), h.getTransaction)
+		bill.GET("/receipts/:id/pdf", perm("billing.transaction.read"), h.getReceiptPDF)
 	}
 }
 
@@ -306,4 +324,200 @@ func (h *Handler) previewQuote(c *gin.Context) {
 		return
 	}
 	response.OK(c, q)
+}
+
+// ── quotations (Phase 3) ──────────────────────────────────────────────────
+
+func (h *Handler) listQuotations(c *gin.Context) {
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListQuotations(c.Request.Context(), c.Query("status"), p.Limit, p.Offset)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
+}
+
+func (h *Handler) createQuotation(c *gin.Context) {
+	var req CreateQuotationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
+		return
+	}
+	q, err := h.svc.CreateQuotation(c.Request.Context(), req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Created(c, q)
+}
+
+func (h *Handler) getQuotation(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
+		return
+	}
+	q, err := h.svc.GetQuotation(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, q)
+}
+
+func (h *Handler) updateQuotation(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
+		return
+	}
+	var req UpdateQuotationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
+		return
+	}
+	q, err := h.svc.UpdateQuotation(c.Request.Context(), id, req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, q)
+}
+
+func (h *Handler) deleteQuotation(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
+		return
+	}
+	if err := h.svc.DeleteQuotation(c.Request.Context(), id); err != nil {
+		response.Error(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) activateQuotation(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
+		return
+	}
+	out, err := h.svc.ActivateQuotation(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+// getInvoicePDF streams the invoice PDF. Lazy: renders on first call, caches
+// in S3 keyed by tenant + invoice number, returns the cached bytes thereafter.
+// ?download=1 forces an attachment Content-Disposition; default is inline so
+// the browser opens it in a tab.
+func (h *Handler) getInvoicePDF(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
+		return
+	}
+	ctx := c.Request.Context()
+	oid := appctx.OrganizationID(ctx)
+	if oid == uuid.Nil && !appctx.IsSuperAdmin(ctx) {
+		response.Error(c, apperr.New(apperr.CodeForbidden, "no org context", nil))
+		return
+	}
+	body, err := h.svc.GetInvoicePDF(ctx, oid, id)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	// Filename based on invoice number so saved PDFs are self-describing.
+	inv, _ := h.svc.GetInvoice(ctx, oid, id)
+	filename := "invoice.pdf"
+	if inv != nil {
+		filename = inv.Number + ".pdf"
+	}
+	disp := "inline"
+	if c.Query("download") == "1" {
+		disp = "attachment"
+	}
+	c.Header("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disp, filename))
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.Data(http.StatusOK, "application/pdf", body)
+}
+
+// ── payments + receipts (Phase 5) ─────────────────────────────────────────
+
+func (h *Handler) recordPayment(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid invoice id", err))
+		return
+	}
+	var req RecordPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
+		return
+	}
+	out, err := h.svc.RecordPayment(c.Request.Context(), id, req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Created(c, out)
+}
+
+func (h *Handler) listTransactions(c *gin.Context) {
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListTransactions(c.Request.Context(), p.Limit, p.Offset)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
+}
+
+func (h *Handler) getTransaction(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
+		return
+	}
+	t, err := h.svc.GetTransaction(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, t)
+}
+
+// getReceiptPDF streams the receipt PDF. Same lazy-render + S3 cache pattern
+// as the invoice endpoint. ?download=1 forces an attachment disposition.
+func (h *Handler) getReceiptPDF(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
+		return
+	}
+	ctx := c.Request.Context()
+	body, err := h.svc.GetReceiptPDF(ctx, id)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	t, _ := h.svc.GetTransaction(ctx, id)
+	filename := "receipt.pdf"
+	if t != nil {
+		filename = t.ReceiptNumber + ".pdf"
+	}
+	disp := "inline"
+	if c.Query("download") == "1" {
+		disp = "attachment"
+	}
+	c.Header("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disp, filename))
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.Data(http.StatusOK, "application/pdf", body)
 }
