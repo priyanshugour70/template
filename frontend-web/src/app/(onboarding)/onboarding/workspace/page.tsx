@@ -122,7 +122,7 @@ export default function WorkspaceStep() {
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Industry">
               <Select value={industry || "_none"} onValueChange={(v) => setIndustry(v === "_none" ? "" : v)}>
                 <SelectTrigger>

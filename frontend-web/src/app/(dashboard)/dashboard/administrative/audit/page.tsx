@@ -307,7 +307,7 @@ export default function AuditPage() {
       {statsQ.isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
           <StatCard
             label="Total requests"
             value={(statsQ.data?.totalRequests ?? 0).toLocaleString()}

@@ -96,7 +96,7 @@ export default function ProfileStep() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="First name">
               <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
             </Field>
@@ -113,7 +113,7 @@ export default function ProfileStep() {
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Timezone" hint="IANA name, e.g. Asia/Kolkata">
               <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} />
             </Field>

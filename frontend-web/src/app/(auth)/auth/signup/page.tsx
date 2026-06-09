@@ -93,7 +93,7 @@ export default function SignupPage() {
                 <Building2 className="h-4 w-4 text-primary" />
                 Workspace
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="org-name">Workspace name</Label>
                   <Input
@@ -129,7 +129,7 @@ export default function SignupPage() {
                 <User className="h-4 w-4 text-primary" />
                 Owner account
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="first-name">First name</Label>
                   <Input id="first-name" required value={firstName} onChange={(e) => setFirstName(e.target.value)} />

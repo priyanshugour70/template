@@ -132,7 +132,7 @@ export function ProfileSection() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="First name">
             <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
           </Field>
@@ -199,7 +199,7 @@ export function RegionalSection() {
         <CardTitle className="text-base">Regional</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Locale" hint="BCP 47 (en-US, fr-FR, en-IN…)">
             <Input value={locale} onChange={(e) => setLocale(e.target.value)} />
           </Field>
@@ -607,9 +607,9 @@ function APIKeysSection() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Prefix</TableHead>
+                <TableHead className="hidden sm:table-cell">Prefix</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Last used</TableHead>
+                <TableHead className="hidden md:table-cell">Last used</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -617,7 +617,7 @@ function APIKeysSection() {
               {(keysQ.data ?? []).map((k) => (
                 <TableRow key={k.id}>
                   <TableCell className="font-medium">{k.name}</TableCell>
-                  <TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
                       {k.prefix}…
                     </code>
@@ -631,7 +631,7 @@ function APIKeysSection() {
                       <Badge variant="success">active</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
+                  <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
                     {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : "Never"}
                   </TableCell>
                   <TableCell className="text-right">
@@ -830,10 +830,10 @@ function WebhooksSection() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>URL</TableHead>
-                <TableHead>Events</TableHead>
+                <TableHead className="hidden md:table-cell">URL</TableHead>
+                <TableHead className="hidden lg:table-cell">Events</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Last status</TableHead>
+                <TableHead className="hidden sm:table-cell">Last status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -898,10 +898,10 @@ function WebhookRow({
           <div className="text-xs text-muted-foreground">{hook.description}</div>
         )}
       </TableCell>
-      <TableCell className="max-w-[260px]">
+      <TableCell className="hidden max-w-[260px] md:table-cell">
         <code className="block truncate font-mono text-xs">{hook.url}</code>
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden lg:table-cell">
         <div className="flex flex-wrap gap-1">
           {(hook.events ?? []).slice(0, 3).map((e) => (
             <Badge key={e} variant="muted" className="text-[10px]">
@@ -922,7 +922,7 @@ function WebhookRow({
           <Badge variant="muted">paused</Badge>
         )}
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden sm:table-cell">
         {hook.lastStatus ? (
           <Badge
             variant={
@@ -1215,9 +1215,9 @@ function DeliveriesDialog({ hook, onClose }: { hook: Webhook; onClose: () => voi
                 <TableRow>
                   <TableHead>Event</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>HTTP</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Time</TableHead>
+                  <TableHead className="hidden sm:table-cell">HTTP</TableHead>
+                  <TableHead className="hidden md:table-cell">Duration</TableHead>
+                  <TableHead className="hidden md:table-cell">Time</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1239,13 +1239,13 @@ function DeliveriesDialog({ hook, onClose }: { hook: Webhook; onClose: () => voi
                         {d.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="hidden font-mono text-xs sm:table-cell">
                       {d.responseStatus ?? "—"}
                     </TableCell>
-                    <TableCell className="tabular-nums text-xs text-muted-foreground">
+                    <TableCell className="hidden tabular-nums text-xs text-muted-foreground md:table-cell">
                       {d.durationMs != null ? `${d.durationMs} ms` : "—"}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
                       {new Date(d.createdAt).toLocaleString()}
                     </TableCell>
                   </TableRow>
@@ -1295,7 +1295,7 @@ export function TenantSection() {
         <CardTitle className="text-base">{tenant.name}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Name">
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
@@ -1306,7 +1306,7 @@ export function TenantSection() {
         <Field label="Description">
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Support email">
             <Input
               type="email"
