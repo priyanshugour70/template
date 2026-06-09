@@ -17,14 +17,22 @@ const QK = {
   roles: (id: string) => ["groups", "roles", id] as const,
 };
 
-export function useGroups() {
+type PageOpts = { page?: number; limit?: number };
+
+export function useGroups(opts: PageOpts = {}) {
   return useQuery({
-    queryKey: QK.list,
+    queryKey: [...QK.list, opts] as const,
     queryFn: async () => {
-      const res = await groupService.list();
+      const res = await groupService.list(opts);
       if (!res.success) throw new Error(res.error?.message ?? "list failed");
-      return res.data ?? [];
+      return {
+        items: res.data ?? [],
+        total: res.pagination?.total ?? (res.data?.length ?? 0),
+        page: res.pagination?.page ?? 1,
+        limit: res.pagination?.limit ?? (opts.limit ?? 200),
+      };
     },
+    placeholderData: (prev) => prev,
   });
 }
 

@@ -62,6 +62,7 @@ import {
   useWebhookDeliveries,
   useWebhooks,
 } from "@/hooks/webhook/useWebhooks";
+import { PaginationBar } from "@/components/shared/pagination-bar";
 import { cn } from "@/lib/cn";
 import { useAuth, usePermissions } from "@/providers";
 import type { APIKey } from "@/types/apikey";
@@ -368,7 +369,9 @@ export function MFASection() {
 // ── sessions ──────────────────────────────────────────────────────────────
 
 export function SessionsSection() {
-  const sessionsQ = useSessions();
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const sessionsQ = useSessions({ page, limit });
   const revoke = useRevokeSession();
 
   return (
@@ -379,7 +382,7 @@ export function SessionsSection() {
       <CardContent className="p-0">
         {sessionsQ.isLoading ? (
           <Skeleton className="m-4 h-16" />
-        ) : (sessionsQ.data?.length ?? 0) === 0 ? (
+        ) : (sessionsQ.data?.total ?? 0) === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">No active sessions.</p>
         ) : (
           <Table>
@@ -392,7 +395,7 @@ export function SessionsSection() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(sessionsQ.data ?? []).map((s) => (
+              {(sessionsQ.data?.items ?? []).map((s) => (
                 <TableRow key={s.id}>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -440,6 +443,18 @@ export function SessionsSection() {
           </Table>
         )}
       </CardContent>
+      <div className="border-t border-border p-3">
+        <PaginationBar
+          page={page}
+          limit={limit}
+          total={sessionsQ.data?.total ?? 0}
+          onPageChange={setPage}
+          onLimitChange={(n) => {
+            setLimit(n);
+            setPage(1);
+          }}
+        />
+      </div>
     </Card>
   );
 }
@@ -579,7 +594,9 @@ export function DeveloperSection() {
 
 function APIKeysSection() {
   const { has } = usePermissions();
-  const keysQ = useApiKeys();
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const keysQ = useApiKeys({ page, limit });
   const revoke = useRevokeApiKey();
   const [creating, setCreating] = useState(false);
   const [createdToken, setCreatedToken] = useState<{ token: string; key: APIKey } | null>(null);
@@ -598,7 +615,7 @@ function APIKeysSection() {
       <CardContent className="p-0">
         {keysQ.isLoading ? (
           <Skeleton className="m-4 h-24" />
-        ) : (keysQ.data?.length ?? 0) === 0 ? (
+        ) : (keysQ.data?.total ?? 0) === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">
             No API keys yet. Issue one to access the public API programmatically.
           </p>
@@ -614,7 +631,7 @@ function APIKeysSection() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(keysQ.data ?? []).map((k) => (
+              {(keysQ.data?.items ?? []).map((k) => (
                 <TableRow key={k.id}>
                   <TableCell className="font-medium">{k.name}</TableCell>
                   <TableCell className="hidden sm:table-cell">
@@ -799,7 +816,9 @@ function RevealSecretDialog({
 
 function WebhooksSection() {
   const { has } = usePermissions();
-  const hooksQ = useWebhooks();
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const hooksQ = useWebhooks({ page, limit });
   const [creating, setCreating] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<{ secret: string; hook: Webhook } | null>(
     null,
@@ -821,7 +840,7 @@ function WebhooksSection() {
       <CardContent className="p-0">
         {hooksQ.isLoading ? (
           <Skeleton className="m-4 h-24" />
-        ) : (hooksQ.data?.length ?? 0) === 0 ? (
+        ) : (hooksQ.data?.total ?? 0) === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">
             No webhooks yet. Register a URL to receive event POSTs.
           </p>
@@ -838,7 +857,7 @@ function WebhooksSection() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(hooksQ.data ?? []).map((w) => (
+              {(hooksQ.data?.items ?? []).map((w) => (
                 <WebhookRow
                   key={w.id}
                   hook={w}
@@ -850,6 +869,18 @@ function WebhooksSection() {
           </Table>
         )}
       </CardContent>
+      <div className="border-t border-border p-3">
+        <PaginationBar
+          page={page}
+          limit={limit}
+          total={hooksQ.data?.total ?? 0}
+          onPageChange={setPage}
+          onLimitChange={(n) => {
+            setLimit(n);
+            setPage(1);
+          }}
+        />
+      </div>
 
       {creating && (
         <CreateWebhookDialog

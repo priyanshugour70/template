@@ -7,14 +7,22 @@ import type { APIKeyCreate } from "@/types/apikey";
 
 const KEY = ["apikeys", "list"] as const;
 
-export function useApiKeys() {
+type PageOpts = { page?: number; limit?: number };
+
+export function useApiKeys(opts: PageOpts = {}) {
   return useQuery({
-    queryKey: KEY,
+    queryKey: [...KEY, opts] as const,
     queryFn: async () => {
-      const res = await apiKeyService.list();
+      const res = await apiKeyService.list(opts);
       if (!res.success) throw new Error(res.error?.message ?? "list failed");
-      return res.data ?? [];
+      return {
+        items: res.data ?? [],
+        total: res.pagination?.total ?? (res.data?.length ?? 0),
+        page: res.pagination?.page ?? 1,
+        limit: res.pagination?.limit ?? (opts.limit ?? 200),
+      };
     },
+    placeholderData: (prev) => prev,
   });
 }
 

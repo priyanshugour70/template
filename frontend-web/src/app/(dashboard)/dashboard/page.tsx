@@ -27,8 +27,8 @@ export default function DashboardHome() {
   const subQ = useActiveSubscription();
   const featuresQ = useFeatureSet();
 
-  const userCount = usersQ.data?.length ?? 0;
-  const roleCount = rolesQ.data?.length ?? 0;
+  const userCount = usersQ.data?.total ?? 0;
+  const roleCount = rolesQ.data?.total ?? 0;
   const planLimit = featuresQ.data?.limits["users.max"];
   const usagePct =
     planLimit != null && planLimit > 0 ? Math.min(100, (userCount / planLimit) * 100) : 0;

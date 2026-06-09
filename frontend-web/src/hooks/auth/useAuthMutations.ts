@@ -62,14 +62,20 @@ export function useChangePasswordMutation() {
   });
 }
 
-export function useSessions() {
+export function useSessions(opts: { page?: number; limit?: number } = {}) {
   return useQuery({
-    queryKey: ["auth", "sessions"],
+    queryKey: ["auth", "sessions", opts] as const,
     queryFn: async () => {
-      const res = await authService.listSessions();
+      const res = await authService.listSessions(opts);
       if (!res.success) throw new Error(res.error?.message ?? "sessions failed");
-      return res.data ?? [];
+      return {
+        items: res.data ?? [],
+        total: res.pagination?.total ?? (res.data?.length ?? 0),
+        page: res.pagination?.page ?? 1,
+        limit: res.pagination?.limit ?? (opts.limit ?? 200),
+      };
     },
+    placeholderData: (prev) => prev,
   });
 }
 

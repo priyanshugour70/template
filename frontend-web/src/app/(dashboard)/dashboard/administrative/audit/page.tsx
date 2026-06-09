@@ -12,7 +12,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -64,6 +64,7 @@ import {
   useAuditTopFailingPaths,
   useAuditTopUsers,
 } from "@/hooks/audit/useAuditQueries";
+import { PaginationBar } from "@/components/shared/pagination-bar";
 import { auditService } from "@/services/audit";
 import { cn } from "@/lib/cn";
 import type {
@@ -143,6 +144,8 @@ export default function AuditPage() {
   const [pathFilter, setPathFilter] = useState<string>("");
   const [statusGroup, setStatusGroup] = useState<"" | "2xx" | "4xx" | "5xx">("");
   const [selected, setSelected] = useState<AuditLog | null>(null);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
 
   const range = useMemo(() => presetRange(preset), [preset]);
 
@@ -170,10 +173,16 @@ export default function AuditPage() {
       ...statsFilter,
       statusFrom,
       statusTo,
-      limit: 200,
+      page,
+      limit,
     }),
-    [statsFilter, statusFrom, statusTo],
+    [statsFilter, statusFrom, statusTo, page, limit],
   );
+
+  // Reset to page 1 whenever a filter that affects the row-set changes.
+  useEffect(() => {
+    setPage(1);
+  }, [statsFilter, statusFrom, statusTo, limit]);
 
   const statsQ = useAuditStats(statsFilter);
   const tsQ = useAuditTimeseries({ ...statsFilter, interval: range.interval });
@@ -349,9 +358,9 @@ export default function AuditPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="activity">
             Activity
-            {(logsQ.data?.length ?? 0) > 0 && (
+            {(logsQ.data?.total ?? 0) > 0 && (
               <Badge variant="muted" className="ml-2">
-                {logsQ.data?.length}
+                {logsQ.data?.total.toLocaleString()}
               </Badge>
             )}
           </TabsTrigger>
@@ -489,10 +498,19 @@ export default function AuditPage() {
 
         <TabsContent value="activity">
           <ActivityTable
-            logs={logsQ.data ?? []}
+            logs={logsQ.data?.items ?? []}
             loading={logsQ.isLoading}
             onRowClick={setSelected}
           />
+          <div className="mt-4">
+            <PaginationBar
+              page={page}
+              limit={limit}
+              total={logsQ.data?.total ?? 0}
+              onPageChange={setPage}
+              onLimitChange={setLimit}
+            />
+          </div>
         </TabsContent>
       </Tabs>
 

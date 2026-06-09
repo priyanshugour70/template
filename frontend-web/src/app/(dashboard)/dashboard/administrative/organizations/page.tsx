@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { PaginationBar } from "@/components/shared/pagination-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -58,7 +59,9 @@ function slugify(s: string): string {
 }
 
 export default function OrganizationsPage() {
-  const orgsQ = useOrganizations();
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(12);
+  const orgsQ = useOrganizations({ page, limit });
   const { has } = usePermissions();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Organization | null>(null);
@@ -87,7 +90,7 @@ export default function OrganizationsPage() {
             <Skeleton key={i} className="h-60" />
           ))}
         </div>
-      ) : !orgsQ.data?.length ? (
+      ) : !orgsQ.data?.total ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center text-sm text-muted-foreground">
             <Building2 className="h-8 w-8" />
@@ -101,11 +104,23 @@ export default function OrganizationsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {orgsQ.data.map((o) => (
-            <OrgCard key={o.id} org={o} onOpen={() => setEditing(o)} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {orgsQ.data.items.map((o) => (
+              <OrgCard key={o.id} org={o} onOpen={() => setEditing(o)} />
+            ))}
+          </div>
+          <PaginationBar
+            page={page}
+            limit={limit}
+            total={orgsQ.data.total}
+            onPageChange={setPage}
+            onLimitChange={(n) => {
+              setLimit(n);
+              setPage(1);
+            }}
+          />
+        </>
       )}
 
       {creating && <CreateDialog onClose={() => setCreating(false)} />}

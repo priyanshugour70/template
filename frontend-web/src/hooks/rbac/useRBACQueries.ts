@@ -17,25 +17,39 @@ const KEY = {
   membershipRoles: (mid: string) => ["rbac", "membership", mid, "roles"] as const,
 };
 
-export function usePermissionsCatalog() {
+type PageOpts = { page?: number; limit?: number };
+
+export function usePermissionsCatalog(opts: PageOpts = {}) {
   return useQuery({
-    queryKey: KEY.permissions,
+    queryKey: [...KEY.permissions, opts] as const,
     queryFn: async () => {
-      const res = await rbacService.listPermissions();
+      const res = await rbacService.listPermissions(opts);
       if (!res.success) throw new Error(res.error?.message ?? "permissions failed");
-      return res.data ?? [];
+      return {
+        items: res.data ?? [],
+        total: res.pagination?.total ?? (res.data?.length ?? 0),
+        page: res.pagination?.page ?? 1,
+        limit: res.pagination?.limit ?? (opts.limit ?? 200),
+      };
     },
+    placeholderData: (prev) => prev,
   });
 }
 
-export function useRoles() {
+export function useRoles(opts: PageOpts = {}) {
   return useQuery({
-    queryKey: KEY.roles,
+    queryKey: [...KEY.roles, opts] as const,
     queryFn: async () => {
-      const res = await rbacService.listRoles();
+      const res = await rbacService.listRoles(opts);
       if (!res.success) throw new Error(res.error?.message ?? "roles failed");
-      return res.data ?? [];
+      return {
+        items: res.data ?? [],
+        total: res.pagination?.total ?? (res.data?.length ?? 0),
+        page: res.pagination?.page ?? 1,
+        limit: res.pagination?.limit ?? (opts.limit ?? 200),
+      };
     },
+    placeholderData: (prev) => prev,
   });
 }
 

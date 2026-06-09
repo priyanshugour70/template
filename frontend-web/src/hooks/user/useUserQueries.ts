@@ -25,8 +25,14 @@ export function useUsers(q: UserListQuery = {}) {
     queryFn: async () => {
       const res = await userService.list(q);
       if (!res.success) throw new Error(res.error?.message ?? "list users failed");
-      return res.data ?? [];
+      return {
+        items: res.data ?? [],
+        total: res.pagination?.total ?? (res.data?.length ?? 0),
+        page: res.pagination?.page ?? 1,
+        limit: res.pagination?.limit ?? (q.limit ?? 25),
+      };
     },
+    placeholderData: (prev) => prev,
   });
 }
 

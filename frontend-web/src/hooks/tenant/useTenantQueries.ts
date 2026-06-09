@@ -45,8 +45,14 @@ export function useOrganizations(q: OrganizationListQuery = {}) {
     queryFn: async () => {
       const res = await tenantService.listOrganizations(q);
       if (!res.success) throw new Error(res.error?.message ?? "list orgs failed");
-      return res.data ?? [];
+      return {
+        items: res.data ?? [],
+        total: res.pagination?.total ?? (res.data?.length ?? 0),
+        page: res.pagination?.page ?? 1,
+        limit: res.pagination?.limit ?? (q.limit ?? 25),
+      };
     },
+    placeholderData: (prev) => prev,
   });
 }
 

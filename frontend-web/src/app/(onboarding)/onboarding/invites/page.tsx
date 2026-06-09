@@ -111,7 +111,7 @@ export default function InvitesStep() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(rolesQ.data ?? []).map((r) => (
+                    {(rolesQ.data?.items ?? []).map((r) => (
                       <SelectItem key={r.key} value={r.key}>
                         {r.name}
                       </SelectItem>

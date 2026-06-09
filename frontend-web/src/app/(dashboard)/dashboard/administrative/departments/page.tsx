@@ -112,14 +112,14 @@ export default function DepartmentsPage() {
       {creating && (
         <CreateDialog
           parentId={creating.parentId}
-          flatDepartments={flatQ.data ?? []}
+          flatDepartments={flatQ.data?.items ?? []}
           onClose={() => setCreating(null)}
         />
       )}
       {editing && (
         <EditDialog
           dept={editing}
-          flatDepartments={flatQ.data ?? []}
+          flatDepartments={flatQ.data?.items ?? []}
           onClose={() => setEditing(null)}
         />
       )}
@@ -477,7 +477,7 @@ function RolesDialog({ dept, onClose }: { dept: Department; onClose: () => void 
           {rolesQ.isLoading || currentQ.isLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : (
-            (rolesQ.data ?? []).map((role) => {
+            (rolesQ.data?.items ?? []).map((role) => {
               const checked = selected.has(role.id);
               return (
                 <label

@@ -33,12 +33,15 @@ import {
   useRoles,
   useUpdateRole,
 } from "@/hooks/rbac/useRBACQueries";
+import { PaginationBar } from "@/components/shared/pagination-bar";
 import { usePermissions } from "@/providers";
 import type { Permission, Role } from "@/types/rbac";
 
 export default function RolesPage() {
-  const rolesQ = useRoles();
-  const permsQ = usePermissionsCatalog();
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
+  const rolesQ = useRoles({ page, limit });
+  const permsQ = usePermissionsCatalog({ limit: 200 });
   const { has } = usePermissions();
   const [editing, setEditing] = useState<Role | null>(null);
   const [creating, setCreating] = useState(false);
@@ -69,7 +72,7 @@ export default function RolesPage() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(rolesQ.data ?? []).map((r) => (
+          {(rolesQ.data?.items ?? []).map((r) => (
             <RoleCard
               key={r.id}
               role={r}
@@ -82,6 +85,17 @@ export default function RolesPage() {
         </div>
       )}
 
+      <PaginationBar
+        page={page}
+        limit={limit}
+        total={rolesQ.data?.total ?? 0}
+        onPageChange={setPage}
+        onLimitChange={(n) => {
+          setLimit(n);
+          setPage(1);
+        }}
+      />
+
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -92,7 +106,7 @@ export default function RolesPage() {
           </DialogHeader>
           <RoleForm
             mode="create"
-            permissions={permsQ.data ?? []}
+            permissions={permsQ.data?.items ?? []}
             onCancel={() => setCreating(false)}
             onSaved={() => setCreating(false)}
           />
@@ -111,7 +125,7 @@ export default function RolesPage() {
             <RoleForm
               mode="edit"
               role={editing}
-              permissions={permsQ.data ?? []}
+              permissions={permsQ.data?.items ?? []}
               onCancel={() => setEditing(null)}
               onSaved={() => setEditing(null)}
             />

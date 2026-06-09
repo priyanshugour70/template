@@ -47,11 +47,14 @@ import {
 import { useRoles } from "@/hooks/rbac/useRBACQueries";
 import { useUsers } from "@/hooks/user/useUserQueries";
 import { toast } from "@/hooks/use-toast";
+import { PaginationBar } from "@/components/shared/pagination-bar";
 import { usePermissions } from "@/providers";
 import type { Group } from "@/types/group";
 
 export default function GroupsPage() {
-  const groupsQ = useGroups();
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
+  const groupsQ = useGroups({ page, limit });
   const { has } = usePermissions();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Group | null>(null);
@@ -82,7 +85,7 @@ export default function GroupsPage() {
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : (groupsQ.data?.length ?? 0) === 0 ? (
+      ) : (groupsQ.data?.total ?? 0) === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-3 py-10 text-center">
             <UsersRound className="h-8 w-8 text-muted-foreground" />
@@ -114,7 +117,7 @@ export default function GroupsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(groupsQ.data ?? []).map((g) => (
+                {(groupsQ.data?.items ?? []).map((g) => (
                   <GroupRow
                     key={g.id}
                     group={g}
@@ -126,6 +129,18 @@ export default function GroupsPage() {
               </TableBody>
             </Table>
           </CardContent>
+          <div className="border-t border-border p-3">
+            <PaginationBar
+              page={page}
+              limit={limit}
+              total={groupsQ.data?.total ?? 0}
+              onPageChange={setPage}
+              onLimitChange={(n) => {
+                setLimit(n);
+                setPage(1);
+              }}
+            />
+          </div>
         </Card>
       )}
 
@@ -339,12 +354,12 @@ function MembersDialog({ group, onClose }: { group: Group; onClose: () => void }
 
   const userById = useMemo(() => {
     const m = new Map<string, string>();
-    for (const u of usersQ.data ?? []) m.set(u.id, u.displayName ?? u.email);
+    for (const u of usersQ.data?.items ?? []) m.set(u.id, u.displayName ?? u.email);
     return m;
   }, [usersQ.data]);
   const groupById = useMemo(() => {
     const m = new Map<string, string>();
-    for (const g of groupsQ.data ?? []) m.set(g.id, g.name);
+    for (const g of groupsQ.data?.items ?? []) m.set(g.id, g.name);
     return m;
   }, [groupsQ.data]);
 
@@ -380,12 +395,12 @@ function MembersDialog({ group, onClose }: { group: Group; onClose: () => void }
               </SelectTrigger>
               <SelectContent>
                 {pickKind === "user"
-                  ? (usersQ.data ?? []).map((u) => (
+                  ? (usersQ.data?.items ?? []).map((u) => (
                       <SelectItem key={u.id} value={u.id}>
                         {u.displayName ?? u.email}
                       </SelectItem>
                     ))
-                  : (groupsQ.data ?? [])
+                  : (groupsQ.data?.items ?? [])
                       .filter((g) => g.id !== group.id)
                       .map((g) => (
                         <SelectItem key={g.id} value={g.id}>
@@ -484,7 +499,7 @@ function RolesDialog({ group, onClose }: { group: Group; onClose: () => void }) 
           {rolesQ.isLoading || currentQ.isLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : (
-            (rolesQ.data ?? []).map((role) => {
+            (rolesQ.data?.items ?? []).map((role) => {
               const checked = selected.has(role.id);
               return (
                 <label

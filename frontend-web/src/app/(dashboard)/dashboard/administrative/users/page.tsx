@@ -13,8 +13,9 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PaginationBar } from "@/components/shared/pagination-bar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -157,6 +158,9 @@ export default function UsersPage() {
   const [invite, setInvite] = useState(false);
   const [detailUser, setDetailUser] = useState<UserProfile | null>(null);
   const [bulkOpen, setBulkOpen] = useState<"assignRole" | "changeDept" | "suspend" | null>(null);
+  // pagination
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
 
   const query = useMemo<UserListQuery>(
     () => ({
@@ -166,13 +170,21 @@ export default function UsersPage() {
       departmentId: departmentId || undefined,
       mfa: mfa === "" ? undefined : mfa === "true",
       sort: `${sortDir === "desc" ? "-" : ""}${sortField}`,
-      limit: 50,
+      page,
+      limit,
     }),
-    [search, status, roleKey, departmentId, mfa, sortField, sortDir],
+    [search, status, roleKey, departmentId, mfa, sortField, sortDir, page, limit],
   );
 
+  // Reset to page 1 whenever a filter changes (otherwise you'd land on an empty
+  // page when the new result-set is shorter).
+  useEffect(() => {
+    setPage(1);
+  }, [search, status, roleKey, departmentId, mfa, sortField, sortDir, limit]);
+
   const usersQ = useUsers(query);
-  const users = usersQ.data ?? [];
+  const users = usersQ.data?.items ?? [];
+  const usersTotal = usersQ.data?.total ?? 0;
 
   const allSelected = users.length > 0 && users.every((u) => selected.has(u.id));
   const toggleAll = () => {
@@ -252,7 +264,7 @@ export default function UsersPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="_any">Any role</SelectItem>
-              {(rolesQ.data ?? []).map((r) => (
+              {(rolesQ.data?.items ?? []).map((r) => (
                 <SelectItem key={r.id} value={r.key}>
                   {r.name}
                 </SelectItem>
@@ -268,7 +280,7 @@ export default function UsersPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="_any">Any department</SelectItem>
-              {(deptsQ.data ?? []).map((d) => (
+              {(deptsQ.data?.items ?? []).map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name}
                 </SelectItem>
@@ -398,6 +410,15 @@ export default function UsersPage() {
             </Table>
           )}
         </CardContent>
+        <div className="border-t border-border p-3">
+          <PaginationBar
+            page={page}
+            limit={limit}
+            total={usersTotal}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+          />
+        </div>
       </Card>
 
       {/* Dialogs */}
@@ -929,7 +950,7 @@ function MembershipTab({ user }: { user: UserProfile }) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">No department</SelectItem>
-                    {(deptsQ.data ?? []).map((d) => (
+                    {(deptsQ.data?.items ?? []).map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         {d.name}
                       </SelectItem>
@@ -939,7 +960,7 @@ function MembershipTab({ user }: { user: UserProfile }) {
               </Field>
               <RolesEditor
                 membership={activeMembership}
-                allRoles={rolesQ.data ?? []}
+                allRoles={rolesQ.data?.items ?? []}
               />
             </div>
           ) : (
@@ -1231,7 +1252,7 @@ function BulkChangeDeptDialog({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="_none">No department</SelectItem>
-              {(deptsQ.data ?? []).map((d) => (
+              {(deptsQ.data?.items ?? []).map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name}
                 </SelectItem>
@@ -1376,7 +1397,7 @@ function InviteDialog({ orgId, onClose }: { orgId: string; onClose: () => void }
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(rolesQ.data ?? []).map((r) => (
+                  {(rolesQ.data?.items ?? []).map((r) => (
                     <SelectItem key={r.key} value={r.key}>
                       {r.name}
                     </SelectItem>
@@ -1391,7 +1412,7 @@ function InviteDialog({ orgId, onClose }: { orgId: string; onClose: () => void }
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_none">None</SelectItem>
-                  {(deptsQ.data ?? []).map((d) => (
+                  {(deptsQ.data?.items ?? []).map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name}
                     </SelectItem>
