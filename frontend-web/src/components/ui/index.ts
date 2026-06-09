@@ -34,3 +34,34 @@ export {
   DropdownMenuGroup,
   DropdownMenuShortcut,
 } from "./dropdown-menu";
+export { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./collapsible";
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./tooltip";
+export {
+  Sheet,
+  SheetTrigger,
+  SheetClose,
+  SheetPortal,
+  SheetContent,
+  SheetTitle,
+  SheetDescription,
+} from "./sheet";
+export {
+  SidebarProvider,
+  Sidebar,
+  SidebarTrigger,
+  SidebarRail,
+  SidebarInset,
+  SidebarHeader,
+  SidebarFooter,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
+  SidebarSeparator,
+  useSidebar,
+} from "./sidebar";

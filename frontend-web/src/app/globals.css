@@ -41,6 +41,17 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* Sidebar — aliased to surface tokens so palettes don't need to opt in.
+   * Override `--sidebar-*` per palette in palettes.ts if you want a distinct chrome. */
+  --color-sidebar: var(--sidebar, var(--background));
+  --color-sidebar-foreground: var(--sidebar-foreground, var(--foreground));
+  --color-sidebar-primary: var(--sidebar-primary, var(--primary));
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground, var(--primary-foreground));
+  --color-sidebar-accent: var(--sidebar-accent, var(--accent));
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground, var(--accent-foreground));
+  --color-sidebar-border: var(--sidebar-border, var(--border));
+  --color-sidebar-ring: var(--sidebar-ring, var(--ring));
 }
 
 * {

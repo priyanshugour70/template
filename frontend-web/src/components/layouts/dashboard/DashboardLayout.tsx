@@ -2,26 +2,21 @@
 
 import type { ReactNode } from "react";
 
-import { cn } from "@/lib/cn";
-import { useSidebarStore } from "@/stores/ui/sidebar.store";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
-import { Sidebar } from "./sidebar";
-import { Topbar } from "./topbar";
+import { AppSidebar } from "./app-sidebar";
+import { Header } from "./header";
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
-  const collapsed = useSidebarStore((s) => s.collapsed);
   return (
-    <div className="min-h-screen bg-muted/20">
-      <Sidebar />
-      <Topbar />
-      <main
-        className={cn(
-          "px-6 py-8 transition-[margin] duration-200",
-          collapsed ? "md:ml-16" : "md:ml-64",
-        )}
-      >
-        <div className="mx-auto max-w-7xl">{children}</div>
-      </main>
-    </div>
+    <SidebarProvider defaultOpen>
+      <AppSidebar />
+      <SidebarInset>
+        <Header />
+        <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8">
+          <div className="mx-auto w-full max-w-7xl">{children}</div>
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

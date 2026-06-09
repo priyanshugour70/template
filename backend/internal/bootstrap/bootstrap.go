@@ -23,6 +23,7 @@ import (
 	"github.com/your-org/your-service/internal/middleware"
 	"github.com/your-org/your-service/internal/modules/audit"
 	"github.com/your-org/your-service/internal/modules/auth"
+	"github.com/your-org/your-service/internal/modules/notification"
 	"github.com/your-org/your-service/internal/modules/rbac"
 	"github.com/your-org/your-service/internal/modules/subscription"
 	"github.com/your-org/your-service/internal/modules/tenant"
@@ -66,6 +67,7 @@ type API struct {
 	SubSvc       *subscription.Service
 	AuditSvc     *audit.Service
 	AuthSvc      *auth.Service
+	NotifSvc     *notification.Service
 }
 
 func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*API, error) {
@@ -230,6 +232,7 @@ func registerModules(
 	rbacM := rbac.New(db, log, cacheSvc, producer)
 	subM := subscription.New(db, log, cacheSvc, producer)
 	auditM := audit.New(db, log)
+	notifM := notification.New(db, log)
 	authM := auth.New(db, tenantM.Service, userM.Service, rbacM.Service, cfg, cacheSvc, producer, log)
 
 	out.TenantSvc = tenantM.Service
@@ -238,6 +241,7 @@ func registerModules(
 	out.SubSvc = subM.Service
 	out.AuditSvc = auditM.Service
 	out.AuthSvc = authM.Service
+	out.NotifSvc = notifM.Service
 
 	// Audit middleware on the /api/v1 group — captures every request after
 	// auth has populated user/tenant/org context.
@@ -259,6 +263,7 @@ func registerModules(
 	rbacM.Handler.Routes(api, authMW, permFn)
 	subM.Handler.Routes(api, authMW, permFn)
 	auditM.Handler.Routes(api, authMW, permFn)
+	notifM.Handler.Routes(api, authMW, permFn)
 	authM.Handler.Routes(api, authMW, permFn)
 }
 
