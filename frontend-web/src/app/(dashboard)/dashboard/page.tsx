@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth, useTenant } from "@/providers";
-import { useActiveSubscription, useFeatureSet } from "@/hooks/subscription/useSubscriptionQueries";
+import { useActiveBilling, useFeatureSet } from "@/hooks/billing/useBilling";
 import { useRoles } from "@/hooks/rbac/useRBACQueries";
 import { useUsers } from "@/hooks/user/useUserQueries";
 
@@ -24,7 +24,7 @@ export default function DashboardHome() {
   const { tenant, activeOrganization } = useTenant();
   const usersQ = useUsers({ limit: 100 });
   const rolesQ = useRoles();
-  const subQ = useActiveSubscription();
+  const subQ = useActiveBilling();
   const featuresQ = useFeatureSet();
 
   const userCount = usersQ.data?.total ?? 0;
@@ -47,7 +47,7 @@ export default function DashboardHome() {
             {activeOrganization ? <> · {activeOrganization.name}</> : null}.
           </p>
         </div>
-        <Link href="/dashboard/subscription">
+        <Link href="/dashboard/billing/subscription">
           <Badge variant="muted" className="cursor-pointer hover:bg-accent gap-1.5">
             <CreditCard className="h-3.5 w-3.5" />
             {subQ.data?.planCode ?? "—"} plan
@@ -81,7 +81,7 @@ export default function DashboardHome() {
           icon={CreditCard}
           loading={subQ.isLoading}
           hint={subQ.data?.status}
-          href="/dashboard/subscription"
+          href="/dashboard/billing/subscription"
         />
         <Metric
           label="Active features"

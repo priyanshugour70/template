@@ -1,117 +1,101 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useActiveBilling, useStartTrial } from "@/hooks/billing/useBilling";
+import { toast } from "@/hooks/use-toast";
 import { useAuth, useTenant } from "@/providers";
-import { useChangePlan, usePlans } from "@/hooks/subscription/useSubscriptionQueries";
 
-function formatPrice(cents: number, currency: string): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: currency || "INR",
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
-}
-
+// Onboarding subscription step. The multi-plan card UI was retired in Phase 10
+// of the billing overhaul. Replaced by a single "Start trial" path because
+// every customer now starts on the same trial and builds a custom plan
+// post-onboarding from /dashboard/billing/plan-builder.
 export default function SubscriptionOnboardingPage() {
   const { tenant, activeOrganization } = useTenant();
   const { user } = useAuth();
-  const plansQ = usePlans();
-  const change = useChangePlan();
-  const [picked, setPicked] = useState<string | null>(null);
+  const activeQ = useActiveBilling();
+  const startTrial = useStartTrial();
+  const [submitting, setSubmitting] = useState(false);
+  const hasSub = !!activeQ.data;
 
-  async function selectPlan(code: string) {
-    setPicked(code);
+  async function go(beginTrial: boolean) {
+    setSubmitting(true);
     try {
-      await change.mutateAsync({ planCode: code, startImmediately: true });
+      if (beginTrial && !hasSub) {
+        await startTrial.mutateAsync();
+      }
       window.location.assign("/dashboard");
-    } catch {
-      setPicked(null);
+    } catch (e) {
+      toast.error("Couldn't continue", e instanceof Error ? e.message : undefined);
+      setSubmitting(false);
     }
   }
 
   return (
-    <div className="container mx-auto max-w-6xl px-6 py-16">
-      <div className="text-center mb-12">
+    <div className="container mx-auto max-w-3xl px-6 py-16">
+      <div className="text-center mb-10">
         <Badge variant="muted">Step 3 of 3</Badge>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">Pick a plan to get started</h1>
-        <p className="mt-2 text-muted-foreground">
+        <h1 className="mt-4 text-3xl font-semibold tracking-tight">
+          {hasSub ? "You're already set up" : "Start your 14-day trial"}
+        </h1>
+        <p className="mt-2 text-muted-foreground max-w-md mx-auto">
           Hi {user?.firstName ?? "there"}! You&apos;ve created{" "}
-          <span className="font-medium text-foreground">{tenant?.name ?? activeOrganization?.name ?? "your workspace"}</span>.
-          Pick a plan to unlock the dashboard. You can always change or cancel later.
+          <span className="font-medium text-foreground">
+            {tenant?.name ?? activeOrganization?.name ?? "your workspace"}
+          </span>
+          .{" "}
+          {hasSub
+            ? "Continue to the dashboard — you can change plans any time from Billing."
+            : "Get full Starter access with no payment for 14 days. Build a custom plan whenever you're ready."}
         </p>
       </div>
 
-      {plansQ.isLoading && (
-        <div className="text-center text-muted-foreground">Loading plans…</div>
-      )}
-
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        {plansQ.data?.map((p) => (
-          <Card key={p.id} className={picked === p.code ? "border-primary ring-2 ring-primary/30" : ""}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardDescription className="capitalize">{p.code}</CardDescription>
-                {p.isDefault && <Badge variant="muted">popular</Badge>}
-              </div>
-              <CardTitle className="text-xl">{p.name}</CardTitle>
-              <div className="mt-2 text-3xl font-semibold">
-                {formatPrice(p.priceCents, p.currency)}
-                <span className="ml-1 text-sm font-normal text-muted-foreground">
-                  /{p.billingCycle}
-                </span>
-              </div>
-              {p.trialDays > 0 && (
-                <Badge variant="success" className="w-fit mt-2">
-                  {p.trialDays}-day trial
-                </Badge>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">{p.description}</p>
-              <ul className="space-y-1.5 text-sm">
-                {(p.features ?? []).slice(0, 6).map((f) => (
-                  <li key={f} className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span className="text-foreground/80">{f}</span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-            <CardFooter>
-              <Button
-                className="w-full"
-                variant={p.isDefault ? "default" : "outline"}
-                disabled={change.isPending}
-                onClick={() => selectPlan(p.code)}
-              >
-                {change.isPending && picked === p.code
-                  ? "Activating…"
-                  : p.priceCents === 0
-                  ? "Get started"
-                  : "Start trial"}
-              </Button>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
-
-      {change.isError && (
-        <p className="mt-6 text-center text-sm text-destructive">
-          {change.error instanceof Error ? change.error.message : "Activation failed"}
-        </p>
-      )}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardDescription className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              {hasSub ? "Current plan" : "Trial includes"}
+            </CardDescription>
+            {hasSub && <Badge variant="success">{activeQ.data?.status}</Badge>}
+          </div>
+          <CardTitle className="text-xl mt-2">
+            {hasSub ? activeQ.data?.planCode : "Starter trial"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ul className="space-y-2 text-sm">
+            <Bullet>10 user seats</Bullet>
+            <Bullet>Core: auth, settings, RBAC, notifications, invites</Bullet>
+            <Bullet>14 days free · no card required</Bullet>
+            <Bullet>Build custom plan from plan-builder when ready</Bullet>
+          </ul>
+          <Button
+            className="w-full"
+            disabled={submitting}
+            onClick={() => go(true)}
+          >
+            {submitting
+              ? "Setting up…"
+              : hasSub
+                ? "Continue to dashboard"
+                : "Start trial"}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
+  );
+}
+
+function Bullet({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex items-center gap-2">
+      <Check className="h-4 w-4 text-emerald-500" />
+      <span>{children}</span>
+    </li>
   );
 }

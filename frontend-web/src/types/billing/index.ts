@@ -1,20 +1,153 @@
 import type { BaseEntity, ID, ISODate, JSONObject } from "@/types/common";
 
-// Re-export the subscription / invoice types so we don't break existing consumers
-// during the Phase 8 rollout. Phase 10 cleanup deletes `@/types/subscription`.
-export type {
-  BillingCycle,
-  Subscription,
-  SubscriptionStatus,
-  UsageCounter,
-  Plan,
-  Invoice,
-  InvoiceStatus,
-  InvoiceLineItem,
-  FeatureSet,
-  UpdateBillingRequest,
-  CancelSubscriptionRequest,
-} from "@/types/subscription";
+// ── Subscription / Plan ───────────────────────────────────────────────────
+
+export type BillingCycle = "monthly" | "quarterly" | "yearly" | "custom" | "one_time";
+export type SubscriptionStatus =
+  | "trial"
+  | "active"
+  | "past_due"
+  | "cancelled"
+  | "expired"
+  | "paused"
+  | "pending";
+
+export interface Plan extends BaseEntity {
+  code: string;
+  name: string;
+  description?: string;
+  tagline?: string;
+  tier: number;
+  billingCycle: BillingCycle;
+  priceCents: number;
+  currency: string;
+  trialDays: number;
+  isActive: boolean;
+  isDefault: boolean;
+  isPublic: boolean;
+  isAddon: boolean;
+  isCustom?: boolean;
+  features: string[];
+  limits: Record<string, number>;
+  metadata: JSONObject;
+}
+
+export interface Subscription extends BaseEntity {
+  tenantId: ID;
+  organizationId: ID;
+  planId: ID;
+  planCode: string;
+  status: SubscriptionStatus;
+  billingCycle: BillingCycle;
+  quantity: number;
+  unitPriceCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  currency: string;
+  startedAt: ISODate;
+  trialStartedAt?: ISODate;
+  trialEndsAt?: ISODate;
+  currentPeriodStart?: ISODate;
+  currentPeriodEnd?: ISODate;
+  nextBillingAt?: ISODate;
+  lastBilledAt?: ISODate;
+  cancelAt?: ISODate;
+  cancelledAt?: ISODate;
+  cancelReason?: string;
+  endedAt?: ISODate;
+  gateway?: string;
+  gatewayCustomerId?: string;
+  gatewaySubscriptionId?: string;
+  billingEmail?: string;
+  billingName?: string;
+  billingAddress?: JSONObject;
+  billingState?: string;
+  features: string[];
+  limits: Record<string, number>;
+  metadata: JSONObject;
+}
+
+export interface UsageCounter extends BaseEntity {
+  tenantId: ID;
+  organizationId: ID;
+  subscriptionId?: ID;
+  key: string;
+  count: number;
+  limitValue?: number;
+  periodStart: ISODate;
+  periodEnd: ISODate;
+  lastResetAt?: ISODate;
+  metadata: JSONObject;
+}
+
+export interface CancelSubscriptionRequest {
+  reason?: string;
+  immediate?: boolean;
+}
+
+export interface UpdateBillingRequest {
+  billingEmail?: string;
+  billingName?: string;
+  billingAddress?: JSONObject;
+}
+
+export interface FeatureSet {
+  planCode: string;
+  status: SubscriptionStatus;
+  features: Record<string, boolean>;
+  limits: Record<string, number>;
+}
+
+// ── Invoices ───────────────────────────────────────────────────────────────
+
+export type InvoiceStatus = "open" | "paid" | "void" | "uncollectible" | "refunded";
+
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number;
+  unitCents?: number;
+  amountCents?: number;
+  unitPriceCents?: number;
+  totalCents?: number;
+  hsnSac?: string;
+  featureKey?: string;
+  taxableAmountCents?: number;
+  tax?: QuoteTax;
+}
+
+export interface Invoice extends BaseEntity {
+  tenantId: ID;
+  organizationId: ID;
+  subscriptionId?: ID;
+  number: string;
+  status: InvoiceStatus;
+  currency: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  amountDueCents: number;
+  amountPaidCents: number;
+  couponCode?: string;
+  description?: string;
+  lineItems: InvoiceLineItem[];
+  periodStart?: ISODate;
+  periodEnd?: ISODate;
+  issuedAt: ISODate;
+  dueAt?: ISODate;
+  paidAt?: ISODate;
+  voidedAt?: ISODate;
+  gateway?: string;
+  gatewayInvoiceId?: string;
+  hsnSac?: string;
+  placeOfSupply?: string;
+  cgstCents?: number;
+  sgstCents?: number;
+  igstCents?: number;
+  pdfStorageKey?: string;
+  metadata: JSONObject;
+}
 
 // ── Feature catalog ───────────────────────────────────────────────────────
 
@@ -128,14 +261,6 @@ export interface UpdateQuotationRequest {
   notes?: string;
 }
 
-export interface ActivateQuotationResponse {
-  quotation: Quotation;
-  plan: import("@/types/subscription").Plan;
-  subscription: import("@/types/subscription").Subscription;
-  invoice: import("@/types/subscription").Invoice;
-  invoiceLines: InvoiceLineRow[];
-}
-
 export interface InvoiceLineRow {
   id: ID;
   invoiceId: ID;
@@ -152,6 +277,14 @@ export interface InvoiceLineRow {
   sortOrder: number;
   metadata?: JSONObject;
   createdAt: ISODate;
+}
+
+export interface ActivateQuotationResponse {
+  quotation: Quotation;
+  plan: Plan;
+  subscription: Subscription;
+  invoice: Invoice;
+  invoiceLines: InvoiceLineRow[];
 }
 
 // ── Payments / Transactions ───────────────────────────────────────────────
@@ -187,8 +320,8 @@ export interface RecordPaymentRequest {
 
 export interface RecordPaymentResponse {
   transaction: Transaction;
-  invoice: import("@/types/subscription").Invoice;
-  subscription?: import("@/types/subscription").Subscription;
+  invoice: Invoice;
+  subscription?: Subscription;
   receiptUrl?: string;
 }
 

@@ -102,14 +102,6 @@ func (UsageCounter) TableName() string { return "billing_usage_counters" }
 
 // ── DTOs ───────────────────────────────────────────────────────────────────
 
-type ChangePlanRequest struct {
-	PlanCode        string `json:"planCode" binding:"required"`
-	BillingCycle    string `json:"billingCycle,omitempty"`
-	Quantity        int    `json:"quantity,omitempty"`
-	StartImmediately bool  `json:"startImmediately,omitempty"`
-	CouponCode      string `json:"couponCode,omitempty"`
-}
-
 type CancelRequest struct {
 	Reason    string `json:"reason,omitempty"`
 	Immediate bool   `json:"immediate,omitempty"`
@@ -428,54 +420,8 @@ type ActivateQuotationResponse struct {
 
 // ── DTOs (lifecycle) ──────────────────────────────────────────────────────
 
-type PauseRequest struct {
-	ResumeAt *time.Time `json:"resumeAt,omitempty"`
-	Reason   string     `json:"reason,omitempty"`
-}
-
 type UpdateBillingRequest struct {
 	BillingEmail   *string                `json:"billingEmail,omitempty"`
 	BillingName    *string                `json:"billingName,omitempty"`
 	BillingAddress map[string]interface{} `json:"billingAddress,omitempty"`
-}
-
-type PreviewChangeRequest struct {
-	PlanCode     string `json:"planCode" binding:"required"`
-	BillingCycle string `json:"billingCycle,omitempty"`
-	Quantity     int    `json:"quantity,omitempty"`
-	CouponCode   string `json:"couponCode,omitempty"`
-}
-
-// PreviewChangeResponse is what the UI renders before the user confirms a
-// plan switch. Amounts are minor units (cents/paise); UI formats.
-type PreviewChangeResponse struct {
-	FromPlanCode        string `json:"fromPlanCode"`
-	ToPlanCode          string `json:"toPlanCode"`
-	BillingCycle        string `json:"billingCycle"`
-	Currency            string `json:"currency"`
-	BaseAmountCents     int64  `json:"baseAmountCents"`
-	ProrationCents      int64  `json:"prorationCents"` // credit (-) or charge (+)
-	CouponCode          string `json:"couponCode,omitempty"`
-	DiscountCents       int64  `json:"discountCents"`
-	TaxCents            int64  `json:"taxCents"`
-	TotalDueCents       int64  `json:"totalDueCents"`
-	EffectiveAt         string `json:"effectiveAt"`
-	IsUpgrade           bool   `json:"isUpgrade"`
-	UnusedDaysRemaining int    `json:"unusedDaysRemaining"`
-}
-
-type ValidateCouponRequest struct {
-	Code     string `json:"code" binding:"required"`
-	PlanCode string `json:"planCode,omitempty"`
-}
-
-type ValidateCouponResponse struct {
-	Valid          bool   `json:"valid"`
-	Reason         string `json:"reason,omitempty"`
-	Code           string `json:"code,omitempty"`
-	Name           string `json:"name,omitempty"`
-	PercentOff     *int   `json:"percentOff,omitempty"`
-	AmountOffCents *int64 `json:"amountOffCents,omitempty"`
-	Currency       string `json:"currency,omitempty"`
-	Duration       string `json:"duration,omitempty"`
 }

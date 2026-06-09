@@ -25,8 +25,6 @@ const KEY = {
 
 function bust(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: [ROOT] });
-  // Keep legacy /subscription cache in sync — same data, different key tree.
-  void qc.invalidateQueries({ queryKey: ["subscription"] });
 }
 
 // ── catalog + preview ─────────────────────────────────────────────────────
@@ -64,6 +62,52 @@ export function useActiveBilling() {
       return res.data!;
     },
     retry: false,
+  });
+}
+
+export function useFeatureSet() {
+  return useQuery({
+    queryKey: [ROOT, "subscription", "features"],
+    queryFn: async () => {
+      const res = await billingService.features();
+      if (!res.success) throw new Error(res.error?.message ?? "features failed");
+      return res.data!;
+    },
+  });
+}
+
+export function useStartTrial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await billingService.startTrial();
+      if (!res.success) throw new Error(res.error?.message ?? "start trial failed");
+      return res.data!;
+    },
+    onSuccess: () => bust(qc),
+  });
+}
+
+export function useCancelBilling() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (req: { reason?: string; immediate?: boolean } = {}) => {
+      const res = await billingService.cancel(req);
+      if (!res.success) throw new Error(res.error?.message ?? "cancel failed");
+    },
+    onSuccess: () => bust(qc),
+  });
+}
+
+export function useUpdateBillingInfo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (req: import("@/types/billing").UpdateBillingRequest) => {
+      const res = await billingService.updateBilling(req);
+      if (!res.success) throw new Error(res.error?.message ?? "update billing failed");
+      return res.data!;
+    },
+    onSuccess: () => bust(qc),
   });
 }
 

@@ -24,36 +24,14 @@ func NewHandler(svc *Service, log *zap.Logger) *Handler { return &Handler{svc: s
 
 type PermissionFunc func(perm string) gin.HandlerFunc
 
+// Routes registers every billing API under /api/v1/billing/*. The legacy
+// /subscription-plans + /subscriptions/* group was retired in Phase 10 —
+// pause/resume/plan-change/coupons/proration are gone, replaced by the
+// quotation + activation flow.
 func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm PermissionFunc) {
-	// Legacy route paths kept while Phase 8 hasn't shipped the frontend rewrite.
-	// All `subscription.*` permission keys were renamed to `billing.*` in
-	// migration 012, so we point the guards at the new keys.
-	plans := g.Group("/subscription-plans", auth)
-	{
-		plans.GET("", h.listPlans)
-	}
-	sub := g.Group("/subscriptions", auth)
-	{
-		sub.GET("/active", perm("billing.read"), h.getActive)
-		sub.POST("/change", perm("billing.manage"), h.changePlan)
-		sub.POST("/preview-change", perm("billing.read"), h.previewChange)
-		sub.POST("/cancel", perm("billing.cancel"), h.cancel)
-		sub.POST("/reactivate", perm("billing.manage"), h.reactivate)
-		// Pause/resume are deprecated and dropped from the new model. The
-		// permission no longer exists, so wiring them up would 500 the request.
-		sub.PATCH("/billing", perm("billing.manage"), h.updateBilling)
-		sub.GET("/features", h.featureSet)
-		sub.GET("/usage", perm("billing.read"), h.listUsage)
-		sub.GET("/invoices", perm("billing.invoice.read"), h.listInvoices)
-		sub.GET("/invoices/:id", perm("billing.invoice.read"), h.getInvoice)
-		sub.POST("/coupons/validate", perm("billing.read"), h.validateCoupon)
-	}
-
-	// New billing routes (Phase 2 + Phase 3). The frontend will move to
-	// /api/v1/billing/* in Phase 8; until then the legacy /subscription-plans
-	// + /subscriptions routes above stay as aliases.
 	bill := g.Group("/billing", auth)
 	{
+		// Catalog + live quote.
 		bill.GET("/features", perm("billing.read"), h.listFeatures)
 		bill.POST("/quotations/preview", perm("billing.read"), h.previewQuote)
 
@@ -65,33 +43,37 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 		bill.DELETE("/quotations/:id", perm("billing.quotation.manage"), h.deleteQuotation)
 		bill.POST("/quotations/:id/activate", perm("billing.quotation.manage"), h.activateQuotation)
 
-		// Invoice PDF (Phase 4). Full /invoices/* CRUD migrates from
-		// /subscriptions/invoices in Phase 8.
-		bill.GET("/invoices/:id/pdf", perm("billing.invoice.read"), h.getInvoicePDF)
+		// Active subscription (read + light writes). No plan-change endpoint —
+		// customers go through the quotation flow to upgrade or change features.
+		sub := bill.Group("/subscription")
+		{
+			sub.GET("", perm("billing.read"), h.getActive)
+			sub.GET("/features", h.featureSet)
+			sub.GET("/usage", perm("billing.read"), h.listUsage)
+			sub.POST("/cancel", perm("billing.cancel"), h.cancel)
+			sub.PATCH("/billing-info", perm("billing.manage"), h.updateBilling)
+			// Start a trial subscription on the default plan. Hit during
+			// onboarding; idempotent — calling twice returns the existing sub.
+			sub.POST("/start-trial", perm("billing.manage"), h.startTrial)
+		}
 
-		// Payments + receipts (Phase 5).
+		// Invoices (Phase 4 + 5).
+		bill.GET("/invoices", perm("billing.invoice.read"), h.listInvoices)
+		bill.GET("/invoices/:id", perm("billing.invoice.read"), h.getInvoice)
+		bill.GET("/invoices/:id/pdf", perm("billing.invoice.read"), h.getInvoicePDF)
 		bill.POST("/invoices/:id/pay", perm("billing.invoice.pay"), h.recordPayment)
+
+		// Payments / transactions / receipts.
 		bill.GET("/transactions", perm("billing.transaction.read"), h.listTransactions)
 		bill.GET("/transactions/:id", perm("billing.transaction.read"), h.getTransaction)
 		bill.GET("/receipts/:id/pdf", perm("billing.transaction.read"), h.getReceiptPDF)
 
 		// Admin: trigger the billing cycle manually (Phase 7). The cron in the
 		// worker calls the same service method; this endpoint exists so admins
-		// can force a roll for debugging or after manual data fixes. Gated by
-		// billing.admin so only super-admins / billing operators hit it.
+		// can force a roll for debugging or after manual data fixes.
 		bill.POST("/admin/cycle/run", perm("billing.admin"), h.runBillingCycle)
 		bill.POST("/admin/trials/expire", perm("billing.admin"), h.expireTrials)
 	}
-}
-
-func (h *Handler) listPlans(c *gin.Context) {
-	p := pagination.FromGin(c)
-	rows, total, err := h.svc.ListPlans(c.Request.Context(), p.Limit, p.Offset)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 func (h *Handler) getActive(c *gin.Context) {
@@ -106,25 +88,6 @@ func (h *Handler) getActive(c *gin.Context) {
 		return
 	}
 	response.OK(c, sub)
-}
-
-func (h *Handler) changePlan(c *gin.Context) {
-	oid := appctx.OrganizationID(c.Request.Context())
-	if oid == uuid.Nil {
-		response.Error(c, apperr.New(apperr.CodeForbidden, "no org context", nil))
-		return
-	}
-	var req ChangePlanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
-		return
-	}
-	sub, inv, err := h.svc.ChangePlanWithInvoice(c.Request.Context(), oid, req)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-	response.OK(c, gin.H{"subscription": sub, "invoice": inv})
 }
 
 func (h *Handler) cancel(c *gin.Context) {
@@ -173,62 +136,17 @@ func (h *Handler) listUsage(c *gin.Context) {
 
 // ── lifecycle ─────────────────────────────────────────────────────────────
 
-func (h *Handler) previewChange(c *gin.Context) {
-	oid := appctx.OrganizationID(c.Request.Context())
-	if oid == uuid.Nil {
-		response.Error(c, apperr.New(apperr.CodeForbidden, "no org context", nil))
+// startTrial provisions a 14-day trial on the default plan for the current
+// org. Idempotent: if the org already has a live subscription, return that.
+func (h *Handler) startTrial(c *gin.Context) {
+	ctx := c.Request.Context()
+	tid := appctx.TenantID(ctx)
+	oid := appctx.OrganizationID(ctx)
+	if tid == uuid.Nil || oid == uuid.Nil {
+		response.Error(c, apperr.New(apperr.CodeForbidden, "no tenant/org context", nil))
 		return
 	}
-	var req PreviewChangeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
-		return
-	}
-	out, err := h.svc.PreviewChange(c.Request.Context(), oid, req)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-	response.OK(c, out)
-}
-
-func (h *Handler) reactivate(c *gin.Context) {
-	oid := appctx.OrganizationID(c.Request.Context())
-	if oid == uuid.Nil {
-		response.Error(c, apperr.New(apperr.CodeForbidden, "no org context", nil))
-		return
-	}
-	sub, err := h.svc.Reactivate(c.Request.Context(), oid)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-	response.OK(c, sub)
-}
-
-func (h *Handler) pause(c *gin.Context) {
-	oid := appctx.OrganizationID(c.Request.Context())
-	if oid == uuid.Nil {
-		response.Error(c, apperr.New(apperr.CodeForbidden, "no org context", nil))
-		return
-	}
-	var req PauseRequest
-	_ = c.ShouldBindJSON(&req)
-	sub, err := h.svc.Pause(c.Request.Context(), oid, req)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-	response.OK(c, sub)
-}
-
-func (h *Handler) resume(c *gin.Context) {
-	oid := appctx.OrganizationID(c.Request.Context())
-	if oid == uuid.Nil {
-		response.Error(c, apperr.New(apperr.CodeForbidden, "no org context", nil))
-		return
-	}
-	sub, err := h.svc.Resume(c.Request.Context(), oid)
+	sub, err := h.svc.ProvisionTrial(ctx, tid, oid)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -299,15 +217,6 @@ func (h *Handler) getInvoice(c *gin.Context) {
 }
 
 // ── coupons ────────────────────────────────────────────────────────────────
-
-func (h *Handler) validateCoupon(c *gin.Context) {
-	var req ValidateCouponRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
-		return
-	}
-	response.OK(c, h.svc.ValidateCoupon(c.Request.Context(), req))
-}
 
 // ── catalog + quote preview (Phase 2) ─────────────────────────────────────
 

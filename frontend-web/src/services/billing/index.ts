@@ -1,21 +1,27 @@
 import { api } from "@/lib/client";
 import type {
   ActivateQuotationResponse,
+  CancelSubscriptionRequest,
   CreateQuotationRequest,
   CycleReport,
   Feature,
+  FeatureSet,
+  Invoice,
   PreviewQuoteRequest,
   Quotation,
   Quote,
   RecordPaymentRequest,
   RecordPaymentResponse,
+  Subscription,
   Transaction,
+  UpdateBillingRequest,
   UpdateQuotationRequest,
+  UsageCounter,
 } from "@/types/billing";
-import type { Invoice, Subscription } from "@/types/subscription";
 
-// All endpoints below sit under /api/v1/billing/* on the backend. The legacy
-// /subscriptions/* aliases still exist while the rest of the app migrates.
+// Every billing endpoint lives under /api/v1/billing/*. Phase 10 retired the
+// legacy /subscription-plans + /subscriptions/* surface; this service is the
+// single source of truth for the client.
 export const billingService = {
   // catalog + quote preview
   listFeatures: () => api.get<Feature[]>("/billing/features"),
@@ -34,14 +40,24 @@ export const billingService = {
   activateQuotation: (id: string) =>
     api.post<ActivateQuotationResponse>(`/billing/quotations/${id}/activate`),
 
-  // invoices (Phase 4)
+  // active subscription
+  getActiveSubscription: () => api.get<Subscription>("/billing/subscription"),
+  features: () => api.get<FeatureSet>("/billing/subscription/features"),
+  listUsage: () => api.get<UsageCounter[]>("/billing/subscription/usage"),
+  cancel: (req: CancelSubscriptionRequest = {}) =>
+    api.post<unknown>("/billing/subscription/cancel", req),
+  updateBilling: (req: UpdateBillingRequest) =>
+    api.patch<Subscription>("/billing/subscription/billing-info", req),
+  startTrial: () => api.post<Subscription>("/billing/subscription/start-trial"),
+
+  // invoices
   listInvoices: (limit = 50) =>
-    api.get<Invoice[]>("/subscriptions/invoices", { query: { limit } }),
-  getInvoice: (id: string) => api.get<Invoice>(`/subscriptions/invoices/${id}`),
+    api.get<Invoice[]>("/billing/invoices", { query: { limit } }),
+  getInvoice: (id: string) => api.get<Invoice>(`/billing/invoices/${id}`),
   invoicePdfUrl: (id: string, download = false) =>
     `/api/v1/billing/invoices/${id}/pdf${download ? "?download=1" : ""}`,
 
-  // payments + receipts (Phase 5)
+  // payments + receipts
   recordPayment: (invoiceId: string, req: RecordPaymentRequest) =>
     api.post<RecordPaymentResponse>(`/billing/invoices/${invoiceId}/pay`, req),
   listTransactions: (params?: { page?: number; limit?: number }) =>
@@ -50,10 +66,7 @@ export const billingService = {
   receiptPdfUrl: (id: string, download = false) =>
     `/api/v1/billing/receipts/${id}/pdf${download ? "?download=1" : ""}`,
 
-  // active subscription (the new flow keeps the legacy endpoints for read paths)
-  getActiveSubscription: () => api.get<Subscription>("/subscriptions/active"),
-
-  // admin / cycle (Phase 7)
+  // admin / cycle
   runCycle: (at?: string) => api.post<CycleReport>("/billing/admin/cycle/run", { at }),
   expireTrials: (at?: string) =>
     api.post<{ expired: number }>("/billing/admin/trials/expire", { at }),
