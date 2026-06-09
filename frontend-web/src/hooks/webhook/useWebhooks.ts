@@ -1,0 +1,86 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { webhookService } from "@/services/webhook";
+import type { WebhookCreate, WebhookTestFire, WebhookUpdate } from "@/types/webhook";
+
+const KEY = {
+  list: ["webhooks", "list"] as const,
+  one: (id: string) => ["webhooks", "one", id] as const,
+  deliveries: (id: string) => ["webhooks", "deliveries", id] as const,
+};
+
+function bust(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ["webhooks"] });
+}
+
+export function useWebhooks() {
+  return useQuery({
+    queryKey: KEY.list,
+    queryFn: async () => {
+      const res = await webhookService.list();
+      if (!res.success) throw new Error(res.error?.message ?? "list failed");
+      return res.data ?? [];
+    },
+  });
+}
+
+export function useWebhookDeliveries(id?: string) {
+  return useQuery({
+    enabled: !!id,
+    queryKey: id ? KEY.deliveries(id) : ["webhooks", "deliveries", "_"],
+    queryFn: async () => {
+      const res = await webhookService.deliveries(id!);
+      if (!res.success) throw new Error(res.error?.message ?? "fetch deliveries failed");
+      return res.data ?? [];
+    },
+  });
+}
+
+export function useCreateWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: WebhookCreate) => {
+      const res = await webhookService.create(body);
+      if (!res.success) throw new Error(res.error?.message ?? "create failed");
+      return res.data!;
+    },
+    onSuccess: () => bust(qc),
+  });
+}
+
+export function useUpdateWebhook(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: WebhookUpdate) => {
+      const res = await webhookService.update(id, body);
+      if (!res.success) throw new Error(res.error?.message ?? "update failed");
+      return res.data!;
+    },
+    onSuccess: () => bust(qc),
+  });
+}
+
+export function useDeleteWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await webhookService.remove(id);
+      if (!res.success) throw new Error(res.error?.message ?? "delete failed");
+    },
+    onSuccess: () => bust(qc),
+  });
+}
+
+export function useTestFireWebhook(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: WebhookTestFire = {}) => {
+      const res = await webhookService.testFire(id, body);
+      if (!res.success) throw new Error(res.error?.message ?? "test fire failed");
+      return res.data!;
+    },
+    onSuccess: () => bust(qc),
+  });
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { authService } from "@/services/auth";
 import type {
@@ -59,5 +59,27 @@ export function useResetPasswordMutation() {
 export function useChangePasswordMutation() {
   return useMutation<unknown, Error, ChangePasswordRequest>({
     mutationFn: (req) => ok(authService.changePassword(req)),
+  });
+}
+
+export function useSessions() {
+  return useQuery({
+    queryKey: ["auth", "sessions"],
+    queryFn: async () => {
+      const res = await authService.listSessions();
+      if (!res.success) throw new Error(res.error?.message ?? "sessions failed");
+      return res.data ?? [];
+    },
+  });
+}
+
+export function useRevokeSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (jti: string) => {
+      const res = await authService.revokeSession(jti);
+      if (!res.success) throw new Error(res.error?.message ?? "revoke failed");
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["auth", "sessions"] }),
   });
 }

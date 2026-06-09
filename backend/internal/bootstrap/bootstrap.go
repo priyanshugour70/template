@@ -21,10 +21,12 @@ import (
 	"github.com/your-org/your-service/internal/config"
 	"github.com/your-org/your-service/internal/health"
 	"github.com/your-org/your-service/internal/middleware"
+	"github.com/your-org/your-service/internal/modules/apikey"
 	"github.com/your-org/your-service/internal/modules/audit"
 	"github.com/your-org/your-service/internal/modules/auth"
 	"github.com/your-org/your-service/internal/modules/department"
 	"github.com/your-org/your-service/internal/modules/group"
+	"github.com/your-org/your-service/internal/modules/webhook"
 	"github.com/your-org/your-service/internal/modules/notification"
 	"github.com/your-org/your-service/internal/modules/rbac"
 	"github.com/your-org/your-service/internal/modules/subscription"
@@ -72,6 +74,8 @@ type API struct {
 	NotifSvc     *notification.Service
 	DeptSvc      *department.Service
 	GroupSvc     *group.Service
+	APIKeySvc    *apikey.Service
+	WebhookSvc   *webhook.Service
 }
 
 func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*API, error) {
@@ -240,6 +244,8 @@ func registerModules(
 	// dept + group plug into rbac.Service for cache invalidation on role-binding changes.
 	deptM := department.New(db, rbacM.Service, log)
 	groupM := group.New(db, rbacM.Service, log)
+	apikeyM := apikey.New(db, log)
+	webhookM := webhook.New(db, log)
 	authM := auth.New(db, tenantM.Service, userM.Service, rbacM.Service, cfg, cacheSvc, producer, log)
 
 	out.TenantSvc = tenantM.Service
@@ -251,6 +257,8 @@ func registerModules(
 	out.NotifSvc = notifM.Service
 	out.DeptSvc = deptM.Service
 	out.GroupSvc = groupM.Service
+	out.APIKeySvc = apikeyM.Service
+	out.WebhookSvc = webhookM.Service
 
 	// Audit middleware on the /api/v1 group — captures every request after
 	// auth has populated user/tenant/org context.
@@ -275,6 +283,8 @@ func registerModules(
 	notifM.Handler.Routes(api, authMW, permFn)
 	deptM.Handler.Routes(api, authMW, permFn)
 	groupM.Handler.Routes(api, authMW, permFn)
+	apikeyM.Handler.Routes(api, authMW, permFn)
+	webhookM.Handler.Routes(api, authMW, permFn)
 	authM.Handler.Routes(api, authMW, permFn)
 }
 
