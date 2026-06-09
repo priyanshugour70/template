@@ -141,20 +141,22 @@ func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 	return nil
 }
 
-func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]Department, error) {
-	rows, err := s.repo.ListByOrg(ctx, orgID)
+func (s *Service) List(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]Department, int64, error) {
+	rows, total, err := s.repo.ListByOrg(ctx, orgID, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list departments failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list departments failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 // Tree builds a nested tree from a flat list. Roots are entries with no
 // parent or a parent that's not visible in this org.
 func (s *Service) Tree(ctx context.Context, orgID uuid.UUID) ([]*Node, error) {
-	rows, err := s.List(ctx, orgID)
+	// Tree is a non-paginated client of the repo — we want every node
+	// regardless of caller's `?limit=` because the UI needs the full hierarchy.
+	rows, _, err := s.repo.ListByOrg(ctx, orgID, 0, 0)
 	if err != nil {
-		return nil, err
+		return nil, apperr.New(apperr.CodeInternal, "list departments failed", err)
 	}
 	byID := make(map[uuid.UUID]*Node, len(rows))
 	for i := range rows {

@@ -49,7 +49,7 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 		// org-scoped listing
 		users.GET("", perm("user.list"), h.list)
 		users.GET("/:id", h.getOne) // self-or-permission handled inside
-		users.PATCH("/:id", h.update)
+		users.PATCH("/:id", perm("user.update"), h.update)
 		users.POST("/:id/suspend", perm("user.suspend"), h.suspend)
 		users.POST("/:id/reactivate", perm("user.suspend"), h.reactivate)
 		users.DELETE("/:id", perm("user.delete"), h.archive)
@@ -234,12 +234,13 @@ func (h *Handler) archive(c *gin.Context) {
 
 func (h *Handler) myMemberships(c *gin.Context) {
 	uid := appctx.UserID(c.Request.Context())
-	rows, err := h.svc.ListMembershipsByUser(c.Request.Context(), uid)
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListMembershipsByUser(c.Request.Context(), uid, p.Limit, p.Offset)
 	if err != nil {
 		response.Error(c, apperr.New(apperr.CodeInternal, "list memberships failed", err))
 		return
 	}
-	response.OK(c, rows)
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 func (h *Handler) updateMembership(c *gin.Context) {
@@ -355,20 +356,24 @@ func (h *Handler) effectivePermissions(c *gin.Context) {
 	response.OK(c, gin.H{"permissions": keys})
 }
 
-// adminListMemberships returns ALL of a user's memberships scoped to the
-// caller's tenant. Used by the admin user detail view.
+// adminListMemberships returns a user's memberships scoped to the caller's
+// tenant. Used by the admin user detail view. Paginated.
 func (h *Handler) adminListMemberships(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
 		return
 	}
-	rows, err := h.svc.ListMembershipsByUser(c.Request.Context(), id)
+	p := pagination.FromGin(c)
+	// Fetch unpaginated first so the post-filter to caller's tenant is correct;
+	// then page in-memory. The caller-tenant filter is the tighter constraint,
+	// so this is bounded by the user's reachable memberships within one tenant —
+	// typically tiny.
+	rows, _, err := h.svc.ListMembershipsByUser(c.Request.Context(), id, 0, 0)
 	if err != nil {
 		response.Error(c, apperr.New(apperr.CodeInternal, "list memberships failed", err))
 		return
 	}
-	// Filter to the caller's tenant only.
 	tid := appctx.TenantID(c.Request.Context())
 	if tid != uuid.Nil && !appctx.IsSuperAdmin(c.Request.Context()) {
 		out := make([]Membership, 0, len(rows))
@@ -379,7 +384,19 @@ func (h *Handler) adminListMemberships(c *gin.Context) {
 		}
 		rows = out
 	}
-	response.OK(c, rows)
+	total := len(rows)
+	if p.Limit > 0 {
+		start := p.Offset
+		end := start + p.Limit
+		if start > total {
+			start = total
+		}
+		if end > total {
+			end = total
+		}
+		rows = rows[start:end]
+	}
+	response.PaginatedOK(c, rows, p.Page, p.Limit, total)
 }
 
 // ── bulk ──────────────────────────────────────────────────────────────────

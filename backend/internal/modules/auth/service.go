@@ -125,7 +125,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest, ip, userAgent str
 		return nil, apperr.New(apperr.CodeInvalidCredentials, "invalid email or password", nil)
 	}
 
-	memberships, err := s.userSvc.ListMembershipsByUser(ctx, u.ID)
+	memberships, _, err := s.userSvc.ListMembershipsByUser(ctx, u.ID, 0, 0)
 	if err != nil {
 		return nil, apperr.New(apperr.CodeInternal, "lookup memberships failed", err)
 	}
@@ -164,7 +164,7 @@ func (s *Service) SwitchOrg(ctx context.Context, targetOrg uuid.UUID, ip, userAg
 	if uid == uuid.Nil || tid == uuid.Nil {
 		return nil, apperr.New(apperr.CodeUnauthorized, "not authenticated", nil)
 	}
-	memberships, err := s.userSvc.ListMembershipsByUser(ctx, uid)
+	memberships, _, err := s.userSvc.ListMembershipsByUser(ctx, uid, 0, 0)
 	if err != nil {
 		return nil, apperr.New(apperr.CodeInternal, "lookup memberships failed", err)
 	}
@@ -218,7 +218,7 @@ func (s *Service) Refresh(ctx context.Context, token, ip, userAgent string) (*Lo
 	}
 	var picked *user.Membership
 	if rec.OrganizationID != nil {
-		m, err := s.userSvc.ListMembershipsByUser(ctx, u.ID)
+		m, _, err := s.userSvc.ListMembershipsByUser(ctx, u.ID, 0, 0)
 		if err == nil {
 			for i := range m {
 				if m[i].OrganizationID == *rec.OrganizationID {
@@ -251,12 +251,12 @@ func (s *Service) Logout(ctx context.Context, refresh string) error {
 	return s.repo.RevokeRefresh(ctx, rec.ID, "logout")
 }
 
-func (s *Service) ListSessions(ctx context.Context) ([]RefreshToken, error) {
+func (s *Service) ListSessions(ctx context.Context, limit, offset int) ([]RefreshToken, int64, error) {
 	uid := appctx.UserID(ctx)
 	if uid == uuid.Nil {
-		return nil, apperr.New(apperr.CodeUnauthorized, "not authenticated", nil)
+		return nil, 0, apperr.New(apperr.CodeUnauthorized, "not authenticated", nil)
 	}
-	return s.repo.ListActiveRefreshByUser(ctx, uid)
+	return s.repo.ListActiveRefreshByUser(ctx, uid, limit, offset)
 }
 
 func (s *Service) RevokeSession(ctx context.Context, jti uuid.UUID) error {

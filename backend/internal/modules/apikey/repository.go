@@ -23,13 +23,21 @@ func (r *Repository) Create(ctx context.Context, k *APIKey) error {
 
 // ListForOrg returns non-deleted keys; revoked keys remain visible so the UI
 // can show "revoked" badges. Filter client-side if you only want active.
-func (r *Repository) ListForOrg(ctx context.Context, orgID uuid.UUID) ([]APIKey, error) {
+func (r *Repository) ListForOrg(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]APIKey, int64, error) {
+	q := r.db.WithContext(ctx).Model(&APIKey{}).Where("organization_id = ?", orgID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	rows := []APIKey{}
-	err := r.db.WithContext(ctx).
-		Where("organization_id = ?", orgID).
-		Order("created_at DESC").
-		Find(&rows).Error
-	return rows, err
+	tx := q.Order("created_at DESC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
 }
 
 func (r *Repository) Get(ctx context.Context, orgID, id uuid.UUID) (*APIKey, error) {

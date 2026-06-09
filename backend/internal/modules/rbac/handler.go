@@ -9,6 +9,7 @@ import (
 
 	"github.com/your-org/your-service/internal/pkg/appctx"
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
+	"github.com/your-org/your-service/internal/pkg/pagination"
 	"github.com/your-org/your-service/internal/pkg/response"
 )
 
@@ -44,12 +45,13 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 }
 
 func (h *Handler) listPermissions(c *gin.Context) {
-	rows, err := h.svc.ListPermissions(c.Request.Context())
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListPermissions(c.Request.Context(), p.Limit, p.Offset)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, rows)
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 func (h *Handler) listRoles(c *gin.Context) {
@@ -58,12 +60,13 @@ func (h *Handler) listRoles(c *gin.Context) {
 		response.Error(c, apperr.New(apperr.CodeForbidden, "no org context", nil))
 		return
 	}
-	rows, err := h.svc.ListRoles(c.Request.Context(), oid)
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListRoles(c.Request.Context(), oid, p.Limit, p.Offset)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, rows)
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 func (h *Handler) createRole(c *gin.Context) {
@@ -144,12 +147,13 @@ func (h *Handler) listRolePerms(c *gin.Context) {
 		response.Error(c, apperr.New(apperr.CodeValidation, "invalid id", err))
 		return
 	}
-	rows, err := h.svc.ListRolePermissions(c.Request.Context(), id)
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListRolePermissions(c.Request.Context(), id, p.Limit, p.Offset)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, rows)
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 func (h *Handler) assignRoles(c *gin.Context) {

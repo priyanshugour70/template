@@ -102,15 +102,23 @@ func (r *Repository) GetRefreshByJTI(ctx context.Context, jti uuid.UUID) (*Refre
 	return &t, nil
 }
 
-func (r *Repository) ListActiveRefreshByUser(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error) {
-	out := []RefreshToken{}
-	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND revoked_at IS NULL AND expires_at > now()", userID).
-		Order("issued_at DESC").
-		Find(&out).Error; err != nil {
-		return nil, err
+func (r *Repository) ListActiveRefreshByUser(ctx context.Context, userID uuid.UUID, limit, offset int) ([]RefreshToken, int64, error) {
+	q := r.db.WithContext(ctx).
+		Model(&RefreshToken{}).
+		Where("user_id = ? AND revoked_at IS NULL AND expires_at > now()", userID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return out, nil
+	out := []RefreshToken{}
+	tx := q.Order("issued_at DESC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 func (r *Repository) RevokeRefresh(ctx context.Context, jti uuid.UUID, reason string) error {

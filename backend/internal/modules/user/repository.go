@@ -215,14 +215,38 @@ func (r *Repository) GetMembershipByUserAndOrg(ctx context.Context, userID, orgI
 	return &m, nil
 }
 
-func (r *Repository) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]Membership, error) {
-	out := []Membership{}
-	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND status IN ?", userID, []string{"active", "invited"}).
-		Find(&out).Error; err != nil {
-		return nil, err
+func (r *Repository) ListMembershipsByUser(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Membership, int64, error) {
+	q := r.db.WithContext(ctx).
+		Model(&Membership{}).
+		Where("user_id = ? AND status IN ?", userID, []string{"active", "invited"})
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return out, nil
+	out := []Membership{}
+	tx := q.Order("created_at DESC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
+// UserHasMembershipInTenant returns true iff the user has any non-deleted
+// membership in the given tenant. Used as the tenant-scope gate for user-level
+// admin operations (suspend, archive, force-reset, etc.) to prevent cross-tenant
+// IDOR.
+func (r *Repository) UserHasMembershipInTenant(ctx context.Context, userID, tenantID uuid.UUID) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&Membership{}).
+		Where("user_id = ? AND tenant_id = ?", userID, tenantID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *Repository) ListTenantIDsByUserEmail(ctx context.Context, email string) ([]uuid.UUID, error) {

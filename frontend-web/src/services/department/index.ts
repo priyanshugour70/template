@@ -8,8 +8,12 @@ import type {
   DepartmentUpdate,
 } from "@/types/department";
 
+// Backend list endpoints are now paginated (default 25, max 200). Pass
+// limit=200 by default to preserve current behaviour for small tenants;
+// callers that want pagination can pass { page, limit } explicitly.
 export const departmentService = {
-  list: () => api.get<Department[]>("/departments"),
+  list: (params?: { page?: number; limit?: number }) =>
+    api.get<Department[]>("/departments", { query: { limit: 200, ...params } }),
   tree: () => api.get<DepartmentNode[]>("/departments/tree"),
   get: (id: string) => api.get<Department>(`/departments/${id}`),
   create: (body: DepartmentCreate) => api.post<Department>("/departments", body),

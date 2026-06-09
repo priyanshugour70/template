@@ -9,8 +9,10 @@ import type {
   WebhookUpdate,
 } from "@/types/webhook";
 
+// Backend list is paginated (default 25, max 200). Default to limit=200.
 export const webhookService = {
-  list: () => api.get<Webhook[]>("/webhooks"),
+  list: (params?: { page?: number; limit?: number }) =>
+    api.get<Webhook[]>("/webhooks", { query: { limit: 200, ...params } }),
   get: (id: string) => api.get<Webhook>(`/webhooks/${id}`),
   create: (body: WebhookCreate) => api.post<WebhookCreateResponse>("/webhooks", body),
   update: (id: string, body: WebhookUpdate) => api.patch<Webhook>(`/webhooks/${id}`, body),

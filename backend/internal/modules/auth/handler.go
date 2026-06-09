@@ -7,7 +7,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/your-org/your-service/internal/middleware"
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
+	"github.com/your-org/your-service/internal/pkg/pagination"
 	"github.com/your-org/your-service/internal/pkg/response"
 )
 
@@ -23,13 +25,16 @@ type PermissionFunc func(perm string) gin.HandlerFunc
 func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm PermissionFunc) {
 	a := g.Group("/auth")
 	{
-		a.POST("/discover", h.discover)
-		a.POST("/login", h.login)
-		a.POST("/refresh", h.refresh)
-		a.POST("/forgot-password", h.forgotPassword)
-		a.POST("/reset-password", h.resetPassword)
-		a.POST("/accept-invite", h.acceptInvite)
-		a.POST("/register", h.register)
+		// Per-IP rate limits on public auth endpoints. Tuned for the threat,
+		// not for legit users — the login UI may call /discover on every
+		// keystroke so it gets a higher cap. Burst (one-minute window) limits.
+		a.POST("/discover", middleware.RateLimit(20), h.discover)
+		a.POST("/login", middleware.RateLimit(10), h.login)
+		a.POST("/refresh", middleware.RateLimit(30), h.refresh)
+		a.POST("/forgot-password", middleware.RateLimit(5), h.forgotPassword)
+		a.POST("/reset-password", middleware.RateLimit(10), h.resetPassword)
+		a.POST("/accept-invite", middleware.RateLimit(5), h.acceptInvite)
+		a.POST("/register", middleware.RateLimit(5), h.register)
 	}
 	authed := g.Group("/auth", auth)
 	{
@@ -143,12 +148,13 @@ func (h *Handler) changePassword(c *gin.Context) {
 }
 
 func (h *Handler) listSessions(c *gin.Context) {
-	rows, err := h.svc.ListSessions(c.Request.Context())
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListSessions(c.Request.Context(), p.Limit, p.Offset)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, rows)
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 func (h *Handler) revokeSession(c *gin.Context) {

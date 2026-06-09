@@ -10,6 +10,7 @@ import (
 
 	"github.com/your-org/your-service/internal/pkg/appctx"
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
+	"github.com/your-org/your-service/internal/pkg/pagination"
 	"github.com/your-org/your-service/internal/pkg/response"
 )
 
@@ -46,12 +47,13 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 }
 
 func (h *Handler) listPlans(c *gin.Context) {
-	rows, err := h.svc.ListPlans(c.Request.Context())
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListPlans(c.Request.Context(), p.Limit, p.Offset)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, rows)
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 func (h *Handler) getActive(c *gin.Context) {
@@ -122,12 +124,13 @@ func (h *Handler) listUsage(c *gin.Context) {
 		response.Error(c, apperr.New(apperr.CodeForbidden, "no org context", nil))
 		return
 	}
-	rows, err := h.svc.ListUsage(c.Request.Context(), oid)
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.ListUsage(c.Request.Context(), oid, p.Limit, p.Offset)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, rows)
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 // ── lifecycle ─────────────────────────────────────────────────────────────

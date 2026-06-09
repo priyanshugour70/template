@@ -58,12 +58,12 @@ func (s *Service) Create(ctx context.Context, tenantID, orgID uuid.UUID, userID 
 	return &CreateOutput{APIKey: *k, Token: plain}, nil
 }
 
-func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]APIKey, error) {
-	rows, err := s.repo.ListForOrg(ctx, orgID)
+func (s *Service) List(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]APIKey, int64, error) {
+	rows, total, err := s.repo.ListForOrg(ctx, orgID, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list api keys failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list api keys failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 func (s *Service) Revoke(ctx context.Context, orgID, id uuid.UUID, by *uuid.UUID) error {

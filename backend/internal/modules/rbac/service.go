@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/your-org/your-service/internal/cache"
+	"github.com/your-org/your-service/internal/pkg/appctx"
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
 	"github.com/your-org/your-service/internal/queue"
 )
@@ -33,12 +34,12 @@ func NewService(repo *Repository, log *zap.Logger, c cache.Cache, p queue.Produc
 
 // ── permissions ────────────────────────────────────────────────────────────
 
-func (s *Service) ListPermissions(ctx context.Context) ([]Permission, error) {
-	rows, err := s.repo.ListPermissions(ctx)
+func (s *Service) ListPermissions(ctx context.Context, limit, offset int) ([]Permission, int64, error) {
+	rows, total, err := s.repo.ListPermissions(ctx, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list permissions failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list permissions failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 // ResolveForUser returns the union of permission keys the user has in the org.
@@ -166,12 +167,12 @@ func (s *Service) GetRoleByKey(ctx context.Context, orgID uuid.UUID, key string)
 	return s.repo.GetRoleByKey(ctx, orgID, strings.ToLower(key))
 }
 
-func (s *Service) ListRoles(ctx context.Context, orgID uuid.UUID) ([]Role, error) {
-	rows, err := s.repo.ListRoles(ctx, orgID)
+func (s *Service) ListRoles(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]Role, int64, error) {
+	rows, total, err := s.repo.ListRoles(ctx, orgID, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list roles failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list roles failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 func (s *Service) UpdateRole(ctx context.Context, orgID, id uuid.UUID, req UpdateRoleRequest, actor *uuid.UUID) (*Role, error) {
@@ -222,12 +223,12 @@ func (s *Service) ArchiveRole(ctx context.Context, orgID, id uuid.UUID) error {
 	return nil
 }
 
-func (s *Service) ListRolePermissions(ctx context.Context, roleID uuid.UUID) ([]Permission, error) {
-	rows, err := s.repo.ListRolePermissions(ctx, roleID)
+func (s *Service) ListRolePermissions(ctx context.Context, roleID uuid.UUID, limit, offset int) ([]Permission, int64, error) {
+	rows, total, err := s.repo.ListRolePermissions(ctx, roleID, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list role permissions failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list role permissions failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 func (s *Service) setRolePermissionsByKey(ctx context.Context, roleID uuid.UUID, keys []string, actor *uuid.UUID) error {
@@ -258,9 +259,36 @@ func (s *Service) setRolePermissionsByKey(ctx context.Context, roleID uuid.UUID,
 
 // ── membership roles ───────────────────────────────────────────────────────
 
+// ensureMembershipInCallerOrg is the tenant/org scope gate for role-assignment
+// operations. Super-admin bypasses. Otherwise the membership MUST belong to
+// the caller's org (and by extension tenant) — else we return 404 to avoid
+// leaking existence.
+func (s *Service) ensureMembershipInCallerOrg(ctx context.Context, mid, callerOrgID uuid.UUID) error {
+	if appctx.IsSuperAdmin(ctx) {
+		return nil
+	}
+	if callerOrgID == uuid.Nil {
+		return apperr.New(apperr.CodeForbidden, "no org context", nil)
+	}
+	_, orgID, err := s.repo.GetMembershipScope(ctx, mid)
+	if err != nil {
+		if IsNotFound(err) {
+			return apperr.New(apperr.CodeNotFound, "membership not found", nil)
+		}
+		return apperr.New(apperr.CodeInternal, "scope check failed", err)
+	}
+	if orgID != callerOrgID {
+		return apperr.New(apperr.CodeNotFound, "membership not found", nil)
+	}
+	return nil
+}
+
 func (s *Service) AssignRolesToMembership(ctx context.Context, orgID, membershipID uuid.UUID, roleKeys []string, actor *uuid.UUID) error {
 	if len(roleKeys) == 0 {
 		return apperr.New(apperr.CodeValidation, "no roles to assign", nil)
+	}
+	if err := s.ensureMembershipInCallerOrg(ctx, membershipID, orgID); err != nil {
+		return err
 	}
 	ids := []uuid.UUID{}
 	for _, k := range roleKeys {
@@ -278,6 +306,10 @@ func (s *Service) AssignRolesToMembership(ctx context.Context, orgID, membership
 }
 
 func (s *Service) RemoveRoleFromMembership(ctx context.Context, membershipID, roleID uuid.UUID) error {
+	oid := appctx.OrganizationID(ctx)
+	if err := s.ensureMembershipInCallerOrg(ctx, membershipID, oid); err != nil {
+		return err
+	}
 	if err := s.repo.RemoveRoleFromMembership(ctx, membershipID, roleID); err != nil {
 		return apperr.New(apperr.CodeInternal, "remove role failed", err)
 	}
@@ -300,7 +332,7 @@ func (s *Service) ListMembershipRoles(ctx context.Context, membershipID uuid.UUI
 // permissions table. Returns the Owner role so the caller can assign it to
 // the first user.
 func (s *Service) SeedSystemRolesForOrg(ctx context.Context, tenantID, orgID uuid.UUID, actor *uuid.UUID) (ownerRole *Role, err error) {
-	perms, err := s.repo.ListPermissions(ctx)
+	perms, _, err := s.repo.ListPermissions(ctx, 0, 0)
 	if err != nil {
 		return nil, apperr.New(apperr.CodeInternal, "list permissions failed", err)
 	}

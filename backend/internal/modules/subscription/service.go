@@ -32,12 +32,12 @@ func NewService(repo *Repository, log *zap.Logger, c cache.Cache, p queue.Produc
 
 // ── plans ──────────────────────────────────────────────────────────────────
 
-func (s *Service) ListPlans(ctx context.Context) ([]Plan, error) {
-	rows, err := s.repo.ListActivePlans(ctx)
+func (s *Service) ListPlans(ctx context.Context, limit, offset int) ([]Plan, int64, error) {
+	rows, total, err := s.repo.ListActivePlans(ctx, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list plans failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list plans failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 // ── org subscription ───────────────────────────────────────────────────────
@@ -302,12 +302,12 @@ func (s *Service) IncrementUsage(ctx context.Context, tenantID, orgID uuid.UUID,
 	return s.repo.IncrementUsage(ctx, tenantID, orgID, key, by, periodStart, periodEnd)
 }
 
-func (s *Service) ListUsage(ctx context.Context, orgID uuid.UUID) ([]UsageCounter, error) {
-	rows, err := s.repo.ListUsage(ctx, orgID)
+func (s *Service) ListUsage(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]UsageCounter, int64, error) {
+	rows, total, err := s.repo.ListUsage(ctx, orgID, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list usage failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list usage failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 // ── cache ──────────────────────────────────────────────────────────────────

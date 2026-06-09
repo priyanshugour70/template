@@ -36,13 +36,21 @@ func (r *Repository) Get(ctx context.Context, orgID, id uuid.UUID) (*Department,
 	return &d, nil
 }
 
-func (r *Repository) ListByOrg(ctx context.Context, orgID uuid.UUID) ([]Department, error) {
+func (r *Repository) ListByOrg(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]Department, int64, error) {
+	q := r.db.WithContext(ctx).Model(&Department{}).Where("organization_id = ?", orgID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	rows := []Department{}
-	err := r.db.WithContext(ctx).
-		Where("organization_id = ?", orgID).
-		Order("sort_order ASC, name ASC").
-		Find(&rows).Error
-	return rows, err
+	tx := q.Order("sort_order ASC, name ASC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
 }
 
 // Reparent updates parent_id. The DB trigger rebuilds the closure rows.

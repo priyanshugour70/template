@@ -58,6 +58,9 @@ export const authService = {
     api.post<{ success: true }>("/change-password", req, { basePath: AUTH_BASE }),
 
   // Sessions list/revoke go through the backend directly via the v1 proxy.
-  listSessions: () => api.get<UserSession[]>("/auth/sessions"),
+  // Paginated server-side (default 25, max 200) — pass limit=200 to keep
+  // current UI showing the full active-session list.
+  listSessions: (params?: { page?: number; limit?: number }) =>
+    api.get<UserSession[]>("/auth/sessions", { query: { limit: 200, ...params } }),
   revokeSession: (jti: string) => api.delete<{ success: true }>(`/auth/sessions/${jti}`),
 };

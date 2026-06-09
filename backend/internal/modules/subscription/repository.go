@@ -20,15 +20,21 @@ func IsNotFound(err error) bool { return errors.Is(err, gorm.ErrRecordNotFound) 
 
 // ── plans ──────────────────────────────────────────────────────────────────
 
-func (r *Repository) ListActivePlans(ctx context.Context) ([]Plan, error) {
-	out := []Plan{}
-	if err := r.db.WithContext(ctx).
-		Where("is_active = true AND is_public = true").
-		Order("tier ASC, price_cents ASC").
-		Find(&out).Error; err != nil {
-		return nil, err
+func (r *Repository) ListActivePlans(ctx context.Context, limit, offset int) ([]Plan, int64, error) {
+	q := r.db.WithContext(ctx).Model(&Plan{}).Where("is_active = true AND is_public = true")
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return out, nil
+	out := []Plan{}
+	tx := q.Order("tier ASC, price_cents ASC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 func (r *Repository) GetPlanByCode(ctx context.Context, code string) (*Plan, error) {
@@ -117,13 +123,21 @@ func (r *Repository) GetUsage(ctx context.Context, orgID uuid.UUID, key string, 
 	return &u, nil
 }
 
-func (r *Repository) ListUsage(ctx context.Context, orgID uuid.UUID) ([]UsageCounter, error) {
+func (r *Repository) ListUsage(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]UsageCounter, int64, error) {
+	q := r.db.WithContext(ctx).Model(&UsageCounter{}).Where("organization_id = ?", orgID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	out := []UsageCounter{}
-	err := r.db.WithContext(ctx).
-		Where("organization_id = ?", orgID).
-		Order("period_start DESC").
-		Find(&out).Error
-	return out, err
+	tx := q.Order("period_start DESC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 // ── invoices ───────────────────────────────────────────────────────────────

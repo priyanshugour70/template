@@ -123,27 +123,30 @@ type CreateMembershipInput struct {
 	InvitedBy      *uuid.UUID
 }
 
+// UpdateUserRequest — every string field has an upper length bound to prevent
+// storage bloat / DoS via 1MB payloads. URL fields use the `url` validator
+// which rejects `javascript:` and similar XSS-loaded schemes.
 type UpdateUserRequest struct {
-	FirstName               *string     `json:"firstName,omitempty"`
-	MiddleName              *string     `json:"middleName,omitempty"`
-	LastName                *string     `json:"lastName,omitempty"`
-	DisplayName             *string     `json:"displayName,omitempty"`
-	Username                *string     `json:"username,omitempty"`
-	AvatarURL               *string     `json:"avatarUrl,omitempty"`
-	CoverURL                *string     `json:"coverUrl,omitempty"`
-	Bio                     *string     `json:"bio,omitempty"`
-	Phone                   *string     `json:"phone,omitempty"`
-	AltEmail                *string     `json:"altEmail,omitempty" binding:"omitempty,email"`
+	FirstName               *string     `json:"firstName,omitempty"               binding:"omitempty,max=100"`
+	MiddleName              *string     `json:"middleName,omitempty"              binding:"omitempty,max=100"`
+	LastName                *string     `json:"lastName,omitempty"                binding:"omitempty,max=100"`
+	DisplayName             *string     `json:"displayName,omitempty"             binding:"omitempty,max=200"`
+	Username                *string     `json:"username,omitempty"                binding:"omitempty,max=64"`
+	AvatarURL               *string     `json:"avatarUrl,omitempty"               binding:"omitempty,url,max=2048"`
+	CoverURL                *string     `json:"coverUrl,omitempty"                binding:"omitempty,url,max=2048"`
+	Bio                     *string     `json:"bio,omitempty"                     binding:"omitempty,max=2000"`
+	Phone                   *string     `json:"phone,omitempty"                   binding:"omitempty,max=32"`
+	AltEmail                *string     `json:"altEmail,omitempty"                binding:"omitempty,email,max=254"`
 	DateOfBirth             *time.Time  `json:"dateOfBirth,omitempty"`
-	Gender                  *string     `json:"gender,omitempty"`
-	JobTitle                *string     `json:"jobTitle,omitempty"`
-	Department              *string     `json:"department,omitempty"`
-	EmployeeCode            *string     `json:"employeeCode,omitempty"`
-	Locale                  *string     `json:"locale,omitempty"`
-	Timezone                *string     `json:"timezone,omitempty"`
-	Country                 *string     `json:"country,omitempty"`
-	State                   *string     `json:"state,omitempty"`
-	City                    *string     `json:"city,omitempty"`
+	Gender                  *string     `json:"gender,omitempty"                  binding:"omitempty,max=32"`
+	JobTitle                *string     `json:"jobTitle,omitempty"                binding:"omitempty,max=128"`
+	Department              *string     `json:"department,omitempty"              binding:"omitempty,max=128"`
+	EmployeeCode            *string     `json:"employeeCode,omitempty"            binding:"omitempty,max=64"`
+	Locale                  *string     `json:"locale,omitempty"                  binding:"omitempty,max=16"`
+	Timezone                *string     `json:"timezone,omitempty"                binding:"omitempty,max=64"`
+	Country                 *string     `json:"country,omitempty"                 binding:"omitempty,max=64"`
+	State                   *string     `json:"state,omitempty"                   binding:"omitempty,max=64"`
+	City                    *string     `json:"city,omitempty"                    binding:"omitempty,max=64"`
 	Address                 model.JSONB `json:"address,omitempty"`
 	Preferences             model.JSONB `json:"preferences,omitempty"`
 	NotificationPreferences model.JSONB `json:"notificationPreferences,omitempty"`

@@ -30,9 +30,11 @@ export const userService = {
   effectivePermissions: (id: string) =>
     api.get<EffectivePermissionsResponse>(`/users/${id}/effective-permissions`),
 
-  // memberships
-  myMemberships: () => api.get<Membership[]>("/users/me/memberships"),
-  listMemberships: (id: string) => api.get<Membership[]>(`/users/${id}/memberships`),
+  // memberships — paginated server-side (default 25, max 200).
+  myMemberships: (params?: { page?: number; limit?: number }) =>
+    api.get<Membership[]>("/users/me/memberships", { query: { limit: 200, ...params } }),
+  listMemberships: (id: string, params?: { page?: number; limit?: number }) =>
+    api.get<Membership[]>(`/users/${id}/memberships`, { query: { limit: 200, ...params } }),
   updateMembership: (userId: string, membershipId: string, req: UpdateMembershipRequest) =>
     api.patch<Membership>(`/users/${userId}/memberships/${membershipId}`, req),
   suspendMembership: (userId: string, membershipId: string) =>

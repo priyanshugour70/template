@@ -109,6 +109,11 @@ func (h *Handler) list(c *gin.Context) {
 		response.Error(c, err)
 		return
 	}
+	if !wantsBodies(c) {
+		for i := range rows {
+			redactBodies(&rows[i])
+		}
+	}
 	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
@@ -130,7 +135,35 @@ func (h *Handler) get(c *gin.Context) {
 		response.Error(c, err)
 		return
 	}
+	if !wantsBodies(c) {
+		redactBodies(row)
+	}
 	response.OK(c, row)
+}
+
+// wantsBodies returns true iff the caller has opted into seeing raw request /
+// response bodies AND is a super-admin. Bodies frequently contain tokens, PII,
+// or third-party API secrets — they're not safe to expose to tenant admins
+// without a deliberate workflow.
+func wantsBodies(c *gin.Context) bool {
+	if c.Query("include") != "bodies" {
+		return false
+	}
+	return appctx.IsSuperAdmin(c.Request.Context())
+}
+
+// redactBodies blanks the fields that may contain captured secrets — request
+// + response bodies (already pass through middleware/audit's scrubber on the
+// write path but defence-in-depth is cheap) and the full header maps (which
+// can include cookies/api keys on third-party callbacks).
+func redactBodies(row *Log) {
+	if row == nil {
+		return
+	}
+	row.RequestBody = nil
+	row.ResponseBody = nil
+	row.RequestHeaders = nil
+	row.ResponseHeaders = nil
 }
 
 // ── aggregation handlers (dashboard) ──────────────────────────────────────

@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
+	"github.com/your-org/your-service/internal/pkg/urlsafe"
 )
 
 type Service struct {
@@ -36,6 +37,10 @@ func NewService(repo *Repository, log *zap.Logger) *Service {
 func (s *Service) Create(ctx context.Context, tenantID, orgID uuid.UUID, in CreateInput) (*CreateOutput, error) {
 	if tenantID == uuid.Nil || orgID == uuid.Nil {
 		return nil, apperr.New(apperr.CodeValidation, "tenant + org context required", nil)
+	}
+	// SSRF defence — reject private/cloud-metadata URLs before we ever fire one.
+	if err := urlsafe.Validate(in.URL); err != nil {
+		return nil, apperr.New(apperr.CodeValidation, fmt.Sprintf("webhook url rejected: %v", err), err)
 	}
 	secret, err := generateSecret()
 	if err != nil {
@@ -74,6 +79,11 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, in UpdateInpu
 			return nil, apperr.New(apperr.CodeNotFound, "webhook not found", nil)
 		}
 		return nil, apperr.New(apperr.CodeInternal, "load webhook failed", err)
+	}
+	if in.URL != nil {
+		if err := urlsafe.Validate(*in.URL); err != nil {
+			return nil, apperr.New(apperr.CodeValidation, fmt.Sprintf("webhook url rejected: %v", err), err)
+		}
 	}
 	patch := map[string]any{}
 	if in.Name != nil {
@@ -122,12 +132,12 @@ func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 	return nil
 }
 
-func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]Webhook, error) {
-	rows, err := s.repo.List(ctx, orgID)
+func (s *Service) List(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]Webhook, int64, error) {
+	rows, total, err := s.repo.List(ctx, orgID, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list webhooks failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list webhooks failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 func (s *Service) ListDeliveries(ctx context.Context, orgID, id uuid.UUID, limit int) ([]Delivery, error) {

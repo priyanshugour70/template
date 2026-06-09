@@ -9,6 +9,7 @@ import (
 
 	"github.com/your-org/your-service/internal/pkg/appctx"
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
+	"github.com/your-org/your-service/internal/pkg/pagination"
 	"github.com/your-org/your-service/internal/pkg/response"
 )
 
@@ -48,12 +49,13 @@ func (h *Handler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rows, err := h.svc.List(c.Request.Context(), oid)
+	p := pagination.FromGin(c)
+	rows, total, err := h.svc.List(c.Request.Context(), oid, p.Limit, p.Offset)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, rows)
+	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
 }
 
 func (h *Handler) create(c *gin.Context) {

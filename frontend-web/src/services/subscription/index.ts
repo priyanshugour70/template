@@ -16,11 +16,15 @@ import type {
   ValidateCouponResponse,
 } from "@/types/subscription";
 
+// Backend list endpoints are paginated (default 25, max 200). Defaulting to
+// limit=200 keeps existing dashboards rendering full lists in typical tenants.
 export const subscriptionService = {
-  listPlans: () => api.get<Plan[]>("/subscription-plans"),
+  listPlans: (params?: { page?: number; limit?: number }) =>
+    api.get<Plan[]>("/subscription-plans", { query: { limit: 200, ...params } }),
   getActive: () => api.get<Subscription>("/subscriptions/active"),
   features: () => api.get<FeatureSet>("/subscriptions/features"),
-  listUsage: () => api.get<UsageCounter[]>("/subscriptions/usage"),
+  listUsage: (params?: { page?: number; limit?: number }) =>
+    api.get<UsageCounter[]>("/subscriptions/usage", { query: { limit: 200, ...params } }),
 
   // lifecycle
   changePlan: (req: ChangePlanRequest) =>

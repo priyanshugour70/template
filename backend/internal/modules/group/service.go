@@ -94,12 +94,12 @@ func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 	return nil
 }
 
-func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]Group, error) {
-	rows, err := s.repo.List(ctx, orgID)
+func (s *Service) List(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]Group, int64, error) {
+	rows, total, err := s.repo.List(ctx, orgID, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list groups failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list groups failed", err)
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 func (s *Service) AddMember(ctx context.Context, orgID, id uuid.UUID, in AddMemberInput, by *uuid.UUID) error {
@@ -143,18 +143,18 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, groupID, memberID uui
 	return nil
 }
 
-func (s *Service) ListMembers(ctx context.Context, orgID, id uuid.UUID) ([]Member, error) {
+func (s *Service) ListMembers(ctx context.Context, orgID, id uuid.UUID, limit, offset int) ([]Member, int64, error) {
 	if _, err := s.repo.Get(ctx, orgID, id); err != nil {
 		if IsNotFound(err) {
-			return nil, apperr.New(apperr.CodeNotFound, "group not found", nil)
+			return nil, 0, apperr.New(apperr.CodeNotFound, "group not found", nil)
 		}
-		return nil, apperr.New(apperr.CodeInternal, "load group failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "load group failed", err)
 	}
-	out, err := s.repo.ListMembers(ctx, id)
+	out, total, err := s.repo.ListMembers(ctx, id, limit, offset)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeInternal, "list members failed", err)
+		return nil, 0, apperr.New(apperr.CodeInternal, "list members failed", err)
 	}
-	return out, nil
+	return out, total, nil
 }
 
 func (s *Service) AssignRoles(ctx context.Context, orgID, id uuid.UUID, roleIDs []uuid.UUID, by *uuid.UUID) error {

@@ -42,13 +42,21 @@ func (r *Repository) Get(ctx context.Context, orgID, id uuid.UUID) (*Webhook, er
 	return &w, nil
 }
 
-func (r *Repository) List(ctx context.Context, orgID uuid.UUID) ([]Webhook, error) {
+func (r *Repository) List(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]Webhook, int64, error) {
+	q := r.db.WithContext(ctx).Model(&Webhook{}).Where("organization_id = ?", orgID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	rows := []Webhook{}
-	err := r.db.WithContext(ctx).
-		Where("organization_id = ?", orgID).
-		Order("created_at DESC").
-		Find(&rows).Error
-	return rows, err
+	tx := q.Order("created_at DESC")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
 }
 
 func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {

@@ -8,13 +8,17 @@ import type {
   GroupUpdate,
 } from "@/types/group";
 
+// Backend list endpoints are now paginated (default 25, max 200). Pass
+// limit=200 to preserve current behaviour; callers can override via params.
 export const groupService = {
-  list: () => api.get<Group[]>("/groups"),
+  list: (params?: { page?: number; limit?: number }) =>
+    api.get<Group[]>("/groups", { query: { limit: 200, ...params } }),
   get: (id: string) => api.get<Group>(`/groups/${id}`),
   create: (body: GroupCreate) => api.post<Group>("/groups", body),
   update: (id: string, body: GroupUpdate) => api.patch<Group>(`/groups/${id}`, body),
   remove: (id: string) => api.delete<null>(`/groups/${id}`),
-  listMembers: (id: string) => api.get<GroupMember[]>(`/groups/${id}/members`),
+  listMembers: (id: string, params?: { page?: number; limit?: number }) =>
+    api.get<GroupMember[]>(`/groups/${id}/members`, { query: { limit: 200, ...params } }),
   addMember: (id: string, body: GroupAddMember) => api.post<null>(`/groups/${id}/members`, body),
   removeMember: (id: string, memberId: string) =>
     api.delete<null>(`/groups/${id}/members/${memberId}`),

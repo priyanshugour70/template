@@ -18,12 +18,21 @@ func IsNotFound(err error) bool { return errors.Is(err, gorm.ErrRecordNotFound) 
 
 // ── permissions ────────────────────────────────────────────────────────────
 
-func (r *Repository) ListPermissions(ctx context.Context) ([]Permission, error) {
-	out := []Permission{}
-	if err := r.db.WithContext(ctx).Order("category, key").Find(&out).Error; err != nil {
-		return nil, err
+func (r *Repository) ListPermissions(ctx context.Context, limit, offset int) ([]Permission, int64, error) {
+	q := r.db.WithContext(ctx).Model(&Permission{})
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return out, nil
+	out := []Permission{}
+	tx := q.Order("category, key")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 func (r *Repository) GetPermissionsByKeys(ctx context.Context, keys []string) ([]Permission, error) {
@@ -63,15 +72,21 @@ func (r *Repository) GetRoleByKey(ctx context.Context, orgID uuid.UUID, key stri
 	return &rl, nil
 }
 
-func (r *Repository) ListRoles(ctx context.Context, orgID uuid.UUID) ([]Role, error) {
-	out := []Role{}
-	if err := r.db.WithContext(ctx).
-		Where("organization_id = ?", orgID).
-		Order("priority DESC, name").
-		Find(&out).Error; err != nil {
-		return nil, err
+func (r *Repository) ListRoles(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]Role, int64, error) {
+	q := r.db.WithContext(ctx).Model(&Role{}).Where("organization_id = ?", orgID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return out, nil
+	out := []Role{}
+	tx := q.Order("priority DESC, name")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 func (r *Repository) UpdateRole(ctx context.Context, orgID, id uuid.UUID, patch map[string]interface{}) error {
@@ -115,16 +130,24 @@ func (r *Repository) SetRolePermissions(ctx context.Context, roleID uuid.UUID, p
 	})
 }
 
-func (r *Repository) ListRolePermissions(ctx context.Context, roleID uuid.UUID) ([]Permission, error) {
-	out := []Permission{}
-	if err := r.db.WithContext(ctx).
+func (r *Repository) ListRolePermissions(ctx context.Context, roleID uuid.UUID, limit, offset int) ([]Permission, int64, error) {
+	q := r.db.WithContext(ctx).
+		Model(&Permission{}).
 		Joins("INNER JOIN role_permissions rp ON rp.permission_id = permissions.id").
-		Where("rp.role_id = ?", roleID).
-		Order("permissions.category, permissions.key").
-		Find(&out).Error; err != nil {
-		return nil, err
+		Where("rp.role_id = ?", roleID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return out, nil
+	out := []Permission{}
+	tx := q.Order("permissions.category, permissions.key")
+	if limit > 0 {
+		tx = tx.Limit(limit).Offset(offset)
+	}
+	if err := tx.Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 // ── membership_roles ───────────────────────────────────────────────────────
@@ -220,6 +243,25 @@ func (r *Repository) ResolvePermissionsForUserOrg(ctx context.Context, userID, o
 		return nil, err
 	}
 	return rows, nil
+}
+
+// GetMembershipScope returns the (tenant_id, organization_id) of a membership
+// — used by the service layer to verify a membership belongs to the caller's
+// scope before role assignment/removal. Returns ErrRecordNotFound if the
+// membership doesn't exist or has been deleted.
+func (r *Repository) GetMembershipScope(ctx context.Context, mid uuid.UUID) (tenantID, orgID uuid.UUID, err error) {
+	var row struct {
+		TenantID       uuid.UUID `gorm:"column:tenant_id"`
+		OrganizationID uuid.UUID `gorm:"column:organization_id"`
+	}
+	if err := r.db.WithContext(ctx).
+		Table("memberships").
+		Select("tenant_id, organization_id").
+		Where("id = ? AND deleted_at IS NULL", mid).
+		Take(&row).Error; err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return row.TenantID, row.OrganizationID, nil
 }
 
 // MembershipIDsForRole returns all memberships currently holding the given role

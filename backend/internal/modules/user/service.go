@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/your-org/your-service/internal/cache"
+	"github.com/your-org/your-service/internal/pkg/appctx"
 	apperr "github.com/your-org/your-service/internal/pkg/errors"
 	"github.com/your-org/your-service/internal/pkg/pagination"
 )
@@ -89,7 +90,57 @@ func (s *Service) GetByEmail(ctx context.Context, email string) (*User, error) {
 	return u, nil
 }
 
+// ensureCallerCanTouchUser is the tenant-scope gate for user-level admin
+// operations. Self-edits and super-admins are always allowed. Otherwise the
+// target user MUST have a membership in the caller's tenant — else we return
+// 404 to avoid leaking existence.
+func (s *Service) ensureCallerCanTouchUser(ctx context.Context, targetUserID uuid.UUID) error {
+	if appctx.IsSuperAdmin(ctx) {
+		return nil
+	}
+	if caller := appctx.UserID(ctx); caller != uuid.Nil && caller == targetUserID {
+		return nil
+	}
+	tid := appctx.TenantID(ctx)
+	if tid == uuid.Nil {
+		return apperr.New(apperr.CodeForbidden, "no tenant context", nil)
+	}
+	has, err := s.repo.UserHasMembershipInTenant(ctx, targetUserID, tid)
+	if err != nil {
+		return apperr.New(apperr.CodeInternal, "scope check failed", err)
+	}
+	if !has {
+		return apperr.New(apperr.CodeNotFound, "user not found", nil)
+	}
+	return nil
+}
+
+// ensureCallerCanTouchMembership is the tenant-scope gate for membership-level
+// admin operations. Super-admin bypasses. Otherwise the membership MUST belong
+// to the caller's tenant — else we return 404 to avoid leaking existence.
+// Returns the loaded membership so callers can reuse it.
+func (s *Service) ensureCallerCanTouchMembership(ctx context.Context, mid uuid.UUID) (*Membership, error) {
+	m, err := s.repo.GetMembership(ctx, mid)
+	if err != nil {
+		if IsNotFound(err) {
+			return nil, apperr.New(apperr.CodeNotFound, "membership not found", nil)
+		}
+		return nil, apperr.New(apperr.CodeInternal, "fetch membership failed", err)
+	}
+	if appctx.IsSuperAdmin(ctx) {
+		return m, nil
+	}
+	tid := appctx.TenantID(ctx)
+	if tid == uuid.Nil || m.TenantID != tid {
+		return nil, apperr.New(apperr.CodeNotFound, "membership not found", nil)
+	}
+	return m, nil
+}
+
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateUserRequest) (*User, error) {
+	if err := s.ensureCallerCanTouchUser(ctx, id); err != nil {
+		return nil, err
+	}
 	patch := map[string]interface{}{}
 	setIfNotNil(patch, "first_name", req.FirstName)
 	setIfNotNil(patch, "middle_name", req.MiddleName)
@@ -138,6 +189,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateUserReques
 }
 
 func (s *Service) Suspend(ctx context.Context, id uuid.UUID) error {
+	if err := s.ensureCallerCanTouchUser(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.SuspendUser(ctx, id); err != nil {
 		if IsNotFound(err) {
 			return apperr.New(apperr.CodeNotFound, "user not found", nil)
@@ -148,6 +202,9 @@ func (s *Service) Suspend(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *Service) Reactivate(ctx context.Context, id uuid.UUID) error {
+	if err := s.ensureCallerCanTouchUser(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.ActivateUser(ctx, id); err != nil {
 		if IsNotFound(err) {
 			return apperr.New(apperr.CodeNotFound, "user not found", nil)
@@ -158,6 +215,9 @@ func (s *Service) Reactivate(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *Service) Archive(ctx context.Context, id uuid.UUID) error {
+	if err := s.ensureCallerCanTouchUser(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.ArchiveUser(ctx, id); err != nil {
 		if IsNotFound(err) {
 			return apperr.New(apperr.CodeNotFound, "user not found", nil)
@@ -223,8 +283,8 @@ func (s *Service) GetMembership(ctx context.Context, id uuid.UUID) (*Membership,
 	return m, nil
 }
 
-func (s *Service) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]Membership, error) {
-	return s.repo.ListMembershipsByUser(ctx, userID)
+func (s *Service) ListMembershipsByUser(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Membership, int64, error) {
+	return s.repo.ListMembershipsByUser(ctx, userID, limit, offset)
 }
 
 func (s *Service) ListTenantIDsByEmail(ctx context.Context, email string) ([]uuid.UUID, error) {
@@ -232,6 +292,9 @@ func (s *Service) ListTenantIDsByEmail(ctx context.Context, email string) ([]uui
 }
 
 func (s *Service) SuspendMembership(ctx context.Context, id uuid.UUID) error {
+	if _, err := s.ensureCallerCanTouchMembership(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.SuspendMembership(ctx, id); err != nil {
 		if IsNotFound(err) {
 			return apperr.New(apperr.CodeNotFound, "membership not found", nil)
@@ -245,6 +308,9 @@ func (s *Service) SuspendMembership(ctx context.Context, id uuid.UUID) error {
 // invalidate the user's permission cache after a successful update when
 // department_id or reports_to changes (downstream of role resolution).
 func (s *Service) UpdateMembership(ctx context.Context, id uuid.UUID, in UpdateMembershipInput) (*Membership, error) {
+	if _, err := s.ensureCallerCanTouchMembership(ctx, id); err != nil {
+		return nil, err
+	}
 	patch := map[string]interface{}{}
 	if in.DepartmentID != nil {
 		// Nil-UUID is the explicit "unset" sentinel from the wire format.
@@ -291,6 +357,9 @@ func (s *Service) UpdateMembership(ctx context.Context, id uuid.UUID, in UpdateM
 // ForcePasswordReset marks the user as needing to change their password on
 // next login. Used by admins to force a rotation without an email round-trip.
 func (s *Service) ForcePasswordReset(ctx context.Context, id uuid.UUID) error {
+	if err := s.ensureCallerCanTouchUser(ctx, id); err != nil {
+		return err
+	}
 	patch := map[string]interface{}{"must_change_password": true}
 	if err := s.repo.UpdateUser(ctx, id, patch); err != nil {
 		if IsNotFound(err) {
@@ -304,6 +373,9 @@ func (s *Service) ForcePasswordReset(ctx context.Context, id uuid.UUID) error {
 // ResetMFA disables MFA for the user and clears the secret + recovery codes.
 // Used when a user loses their device.
 func (s *Service) ResetMFA(ctx context.Context, id uuid.UUID) error {
+	if err := s.ensureCallerCanTouchUser(ctx, id); err != nil {
+		return err
+	}
 	patch := map[string]interface{}{
 		"mfa_enabled":        false,
 		"mfa_secret":         nil,
@@ -321,6 +393,9 @@ func (s *Service) ResetMFA(ctx context.Context, id uuid.UUID) error {
 // UnlockUser clears the lock window and failed-login counter set by the
 // auth module's failed-attempt back-off.
 func (s *Service) UnlockUser(ctx context.Context, id uuid.UUID) error {
+	if err := s.ensureCallerCanTouchUser(ctx, id); err != nil {
+		return err
+	}
 	patch := map[string]interface{}{
 		"locked_until":       nil,
 		"failed_login_count": 0,
@@ -359,6 +434,9 @@ func (s *Service) LockUser(ctx context.Context, id uuid.UUID, until time.Time) e
 }
 
 func (s *Service) ArchiveMembership(ctx context.Context, id uuid.UUID) error {
+	if _, err := s.ensureCallerCanTouchMembership(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.ArchiveMembership(ctx, id); err != nil {
 		if IsNotFound(err) {
 			return apperr.New(apperr.CodeNotFound, "membership not found", nil)

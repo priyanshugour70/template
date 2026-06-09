@@ -267,6 +267,13 @@ func (c *Config) Validate() error {
 	if countAllowedCORSOrigins(c.CORS.AllowedOrigins) == 0 {
 		return fmt.Errorf("config: APP_ENV=%q requires at least one non-empty origin in CORS_ALLOWED_ORIGINS (comma-separated)", c.App.Env)
 	}
+	// Reject wildcard origins in production — a single "*" cancels every CSRF
+	// and origin-pinning benefit the explicit allow-list provides.
+	for _, p := range strings.Split(c.CORS.AllowedOrigins, ",") {
+		if strings.TrimSpace(p) == "*" {
+			return fmt.Errorf("config: APP_ENV=%q forbids the wildcard \"*\" in CORS_ALLOWED_ORIGINS", c.App.Env)
+		}
+	}
 	secret := strings.TrimSpace(c.Auth.JWTSecret)
 	if len(secret) < 32 {
 		return fmt.Errorf("config: AUTH_JWT_SECRET must be at least 32 characters in production")
