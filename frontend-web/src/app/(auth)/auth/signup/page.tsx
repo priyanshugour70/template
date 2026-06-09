@@ -1,8 +1,9 @@
 "use client";
 
 import { Building2, User } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/providers";
 import { registerService } from "@/services/auth/register";
 
 function slugify(s: string): string {
@@ -28,6 +30,14 @@ function slugify(s: string): string {
 }
 
 export default function SignupPage() {
+  const router = useRouter();
+  const { isAuthenticated, loading } = useAuth();
+
+  // Bounce already-signed-in users (covers browser bfcache).
+  useEffect(() => {
+    if (!loading && isAuthenticated) router.replace("/dashboard");
+  }, [loading, isAuthenticated, router]);
+
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [firstName, setFirstName] = useState("");

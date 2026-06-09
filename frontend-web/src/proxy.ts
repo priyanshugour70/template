@@ -20,6 +20,12 @@ const publicPaths = [
   "/auth/oauth/callback",
 ];
 
+// Paths an authenticated user should never see — they exist only to sign in
+// or create a new account. Visiting them while logged in bounces to dashboard.
+// (reset-password and accept-invite are token-driven and allowed while authed,
+// so the user can change their password or accept a workspace invite.)
+const authedUserBounceFrom = ["/auth/login", "/auth/signup", "/auth/forgot-password"];
+
 const publicRoots = ["/", "/about", "/pricing", "/contact"];
 
 export function proxy(request: NextRequest) {
@@ -29,14 +35,21 @@ export function proxy(request: NextRequest) {
   const isPublicRoot = publicRoots.includes(pathname);
   const accessToken = request.cookies.get(COOKIE_ACCESS)?.value;
 
+  // Bare /auth has no page — send it somewhere useful instead of 404'ing.
+  if (pathname === "/auth" || pathname === "/auth/") {
+    return NextResponse.redirect(
+      new URL(accessToken ? "/dashboard" : "/auth/login", request.url),
+    );
+  }
+
   if (!isPublicPath && !isPublicRoot && !accessToken) {
     const loginUrl = new URL("/auth/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // If already authenticated and visiting /auth/login, bounce to dashboard.
-  if (isPublicPath && accessToken && pathname.startsWith("/auth/login")) {
+  // Authed users have no business on sign-in / sign-up / forgot-password.
+  if (accessToken && authedUserBounceFrom.some((p) => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { usePaletteStore } from "@/stores/session/palette.store";
 import { PALETTE_LIST } from "@/theme/palettes";
@@ -10,10 +11,16 @@ export function PalettePicker() {
   const palette = usePaletteStore((s) => s.palette);
   const setPalette = usePaletteStore((s) => s.setPalette);
 
+  // Defer cookie-derived active state until after mount so server-rendered
+  // HTML (which always sees DEFAULT_PALETTE) matches the first client render.
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount flag for hydration deferral
+  useEffect(() => setMounted(true), []);
+
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {PALETTE_LIST.map((p) => {
-        const active = p.id === palette;
+        const active = mounted && p.id === palette;
         return (
           <button
             key={p.id}

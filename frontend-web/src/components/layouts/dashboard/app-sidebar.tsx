@@ -81,9 +81,27 @@ const sections: NavSection[] = [
   },
   {
     id: "settings",
-    label: "System",
+    label: "Settings",
     collapsible: true,
-    items: [{ href: "/dashboard/settings", label: "Settings", icon: "settings" }],
+    items: [
+      { href: "/dashboard/settings", label: "Overview", icon: "grid" },
+      { href: "/dashboard/settings/profile", label: "Profile", icon: "user" },
+      { href: "/dashboard/settings/security", label: "Security", icon: "lock" },
+      { href: "/dashboard/settings/sessions", label: "Sessions", icon: "monitor" },
+      { href: "/dashboard/settings/notifications", label: "Notifications", icon: "bell" },
+      {
+        href: "/dashboard/settings/developer",
+        label: "Developer",
+        icon: "code",
+        anyPermission: ["api_key.list", "webhook.list"],
+      },
+      {
+        href: "/dashboard/settings/tenant",
+        label: "Tenant",
+        icon: "building",
+        permission: "tenant.update",
+      },
+    ],
   },
 ];
 
@@ -105,6 +123,17 @@ function NavIcon({ name }: { name: string }) {
       </>
     ),
     "users-round": <path d="M18 21a8 8 0 00-16 0M10 14a5 5 0 100-10 5 5 0 000 10zM22 21a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />,
+    user: <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z" />,
+    lock: <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />,
+    monitor: (
+      <>
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
+      </>
+    ),
+    bell: <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />,
+    code: <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />,
   };
 
   return (

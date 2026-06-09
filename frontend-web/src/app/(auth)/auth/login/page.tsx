@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,14 +15,35 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDiscoverMutation, useLoginMutation } from "@/hooks/auth/useAuthMutations";
+import { useAuth } from "@/providers";
 import type { DiscoveredTenant } from "@/types/auth";
 
 type Step = "email" | "tenant" | "password";
 
+/** Reject redirect targets that would bounce the user back into the auth tree
+ * or off-site. Anything that's not a local non-auth path falls back to /dashboard. */
+function safeRedirect(raw: string | null): string {
+  if (!raw) return "/dashboard";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  if (raw === "/auth" || raw === "/auth/" || raw.startsWith("/auth/")) {
+    // /auth/accept-invite is valid post-login but the invite flow handles that
+    // explicitly; the safe default here is /dashboard.
+    return "/dashboard";
+  }
+  return raw;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const search = useSearchParams();
-  const redirect = search.get("redirect") ?? "/dashboard";
+  const redirect = safeRedirect(search.get("redirect"));
+  const { isAuthenticated, loading } = useAuth();
+
+  // Bounce already-signed-in users (covers browser bfcache, where the proxy
+  // doesn't run on back-navigation).
+  useEffect(() => {
+    if (!loading && isAuthenticated) router.replace(redirect);
+  }, [loading, isAuthenticated, redirect, router]);
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");

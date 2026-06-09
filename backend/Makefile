@@ -48,7 +48,9 @@ run:
 		echo "Building API and worker (stop with Ctrl+C to pick up code changes)"; \
 		go build -trimpath -o bin/api-dev ./cmd/api && \
 		go build -trimpath -o bin/worker-dev ./cmd/worker && \
-		bin/worker-dev & w=$$!; trap "kill $$w 2>/dev/null" EXIT INT TERM; exec bin/api-dev'
+		bin/worker-dev & w=$$!; \
+		trap "kill $$w 2>/dev/null; wait $$w 2>/dev/null" EXIT INT TERM; \
+		bin/api-dev; wait $$w 2>/dev/null'
 
 run-api:
 	@bash -c 'set -e; cd "$(BACKEND_ROOT)"; \

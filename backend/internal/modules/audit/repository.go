@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/your-org/your-service/internal/pkg/pagination"
 )
@@ -21,8 +22,13 @@ func NewRepository(db *gorm.DB) *Repository { return &Repository{db: db} }
 func IsNotFound(err error) bool { return errors.Is(err, gorm.ErrRecordNotFound) }
 
 // Insert is called from the worker consumer to persist a captured event.
+// ON CONFLICT DO NOTHING makes the insert idempotent: redelivered events
+// (e.g. when more than one worker process subscribes to the same pub/sub
+// channel) are silently dropped instead of erroring on the PK constraint.
 func (r *Repository) Insert(ctx context.Context, log *Log) error {
-	return r.db.WithContext(ctx).Create(log).Error
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(log).Error
 }
 
 // BatchInsert flushes a slice of events in one statement.
@@ -30,7 +36,9 @@ func (r *Repository) BatchInsert(ctx context.Context, logs []Log) error {
 	if len(logs) == 0 {
 		return nil
 	}
-	return r.db.WithContext(ctx).CreateInBatches(logs, 200).Error
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		CreateInBatches(logs, 200).Error
 }
 
 // List returns audit rows filtered by the caller's tenant. The caller must
