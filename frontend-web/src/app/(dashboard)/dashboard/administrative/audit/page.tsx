@@ -181,6 +181,7 @@ export default function AuditPage() {
 
   // Reset to page 1 whenever a filter that affects the row-set changes.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: page reset is a reaction to filter change
     setPage(1);
   }, [statsFilter, statusFrom, statusTo, limit]);
 

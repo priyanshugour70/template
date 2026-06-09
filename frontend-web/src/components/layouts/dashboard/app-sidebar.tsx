@@ -63,6 +63,7 @@ const sections: NavSection[] = [
     label: "Administrative",
     collapsible: true,
     items: [
+      { href: "/dashboard/administrative", label: "Overview", icon: "grid" },
       { href: "/dashboard/administrative/users", label: "Users", icon: "users", permission: "user.list" },
       { href: "/dashboard/administrative/roles", label: "Roles & Permissions", icon: "key", permission: "role.list" },
       { href: "/dashboard/administrative/departments", label: "Departments", icon: "git-branch", permission: "department.list" },

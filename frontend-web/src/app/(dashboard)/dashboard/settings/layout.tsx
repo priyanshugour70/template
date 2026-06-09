@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { NoAccessPanel } from "@/components/shared/permission-gate";
 import { cn } from "@/lib/cn";
 import { usePermissions } from "@/providers";
 
@@ -43,9 +44,19 @@ function isActive(pathname: string, href: string) {
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { hasAny } = usePermissions();
+  const { hasAny, isSuperAdmin } = usePermissions();
 
   const visible = TABS.filter((t) => !t.anyPermission || hasAny(t.anyPermission));
+  // Find the tab whose href is the longest prefix of the current path — that's
+  // the active sub-route. If that tab requires a permission and the user
+  // doesn't hold it, render the No Access panel instead of the children.
+  const current = TABS.filter((t) => isActive(pathname, t.href)).reduce<
+    (typeof TABS)[number] | undefined
+  >((a, b) => (a && a.href.length >= b.href.length ? a : b), undefined);
+  const accessDenied =
+    current?.anyPermission !== undefined &&
+    !isSuperAdmin &&
+    !hasAny(current.anyPermission);
 
   return (
     <div className="flex flex-col gap-6">
@@ -80,7 +91,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         </nav>
       </div>
 
-      <div>{children}</div>
+      <div>{accessDenied ? <NoAccessPanel /> : children}</div>
     </div>
   );
 }

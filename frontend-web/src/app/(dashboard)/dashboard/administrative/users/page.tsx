@@ -179,6 +179,7 @@ export default function UsersPage() {
   // Reset to page 1 whenever a filter changes (otherwise you'd land on an empty
   // page when the new result-set is shorter).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: page reset is a reaction to filter change
     setPage(1);
   }, [search, status, roleKey, departmentId, mfa, sortField, sortDir, limit]);
 
