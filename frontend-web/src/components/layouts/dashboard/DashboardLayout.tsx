@@ -3,8 +3,10 @@
 import type { ReactNode } from "react";
 
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/toaster";
 
 import { AppSidebar } from "./app-sidebar";
+import { CommandPalette } from "./command-palette";
 import { Header } from "./header";
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
@@ -17,6 +19,8 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           <div className="mx-auto w-full max-w-7xl">{children}</div>
         </main>
       </SidebarInset>
+      <CommandPalette />
+      <Toaster />
     </SidebarProvider>
   );
 }

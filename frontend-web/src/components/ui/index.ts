@@ -65,3 +65,70 @@ export {
   SidebarSeparator,
   useSidebar,
 } from "./sidebar";
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableRow,
+  TableHead,
+  TableCell,
+  TableCaption,
+} from "./table";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
+export { Switch } from "./switch";
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+  SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
+} from "./select";
+export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from "./popover";
+export {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormDescription,
+  FormMessage,
+  useFormField,
+} from "./form";
+export {
+  Toast,
+  ToastAction,
+  ToastClose,
+  ToastTitle,
+  ToastDescription,
+  ToastViewport,
+  ToastProvider,
+  type ToastVariant,
+} from "./toast";
+export { Toaster } from "./toaster";
+export {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
+  PaginationEllipsis,
+  usePager,
+} from "./pagination";
+export {
+  Command,
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandShortcut,
+  CommandSeparator,
+} from "./command";

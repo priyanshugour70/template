@@ -63,10 +63,10 @@ const sections: NavSection[] = [
     label: "Administrative",
     collapsible: true,
     items: [
-      { href: "/dashboard/users", label: "Users", icon: "users", permission: "user.list" },
-      { href: "/dashboard/roles", label: "Roles & Permissions", icon: "key", permission: "role.list" },
-      { href: "/dashboard/organizations", label: "Organizations", icon: "building", permission: "org.list" },
-      { href: "/dashboard/audit", label: "Audit log", icon: "file-text", permission: "audit.read" },
+      { href: "/dashboard/administrative/users", label: "Users", icon: "users", permission: "user.list" },
+      { href: "/dashboard/administrative/roles", label: "Roles & Permissions", icon: "key", permission: "role.list" },
+      { href: "/dashboard/administrative/organizations", label: "Organizations", icon: "building", permission: "org.list" },
+      { href: "/dashboard/administrative/audit", label: "Audit log", icon: "file-text", permission: "audit.read" },
     ],
   },
   {

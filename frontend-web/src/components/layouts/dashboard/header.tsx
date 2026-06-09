@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -164,6 +164,33 @@ function NotificationBell() {
   );
 }
 
+function CommandTrigger() {
+  const dispatch = () => {
+    const ev = new KeyboardEvent("keydown", {
+      key: "k",
+      metaKey: typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform),
+      ctrlKey: typeof navigator !== "undefined" && !/Mac|iPhone|iPad/.test(navigator.platform),
+      bubbles: true,
+    });
+    document.dispatchEvent(ev);
+  };
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={dispatch}
+      className="hidden md:inline-flex h-9 gap-2 px-3 text-muted-foreground"
+    >
+      <Search className="h-4 w-4" />
+      <span className="text-sm">Search…</span>
+      <kbd className="ml-2 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+        ⌘K
+      </kbd>
+    </Button>
+  );
+}
+
 export function Header() {
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 border-b border-border bg-background/85 backdrop-blur-sm px-4 sm:px-6">
@@ -175,6 +202,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <CommandTrigger />
         <ThemePicker />
         <NotificationBell />
         <UserMenu />

@@ -65,7 +65,7 @@ export default function DashboardHome() {
           loading={usersQ.isLoading}
           hint={planLimit != null && planLimit > 0 ? `of ${planLimit} on ${subQ.data?.planCode ?? "plan"}` : undefined}
           progress={planLimit != null && planLimit > 0 ? usagePct : undefined}
-          href="/dashboard/users"
+          href="/dashboard/administrative/users"
         />
         <Metric
           label="Roles"
@@ -73,7 +73,7 @@ export default function DashboardHome() {
           icon={Lock}
           loading={rolesQ.isLoading}
           hint="Owner, Admin, Member by default"
-          href="/dashboard/roles"
+          href="/dashboard/administrative/roles"
         />
         <Metric
           label="Subscription"
@@ -96,21 +96,21 @@ export default function DashboardHome() {
       <div>
         <h2 className="text-lg font-semibold mb-4">Jump to</h2>
         <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-          <QuickLink href="/dashboard/users" icon={Users} title="Manage users" sub="Invite teammates, suspend, archive" />
+          <QuickLink href="/dashboard/administrative/users" icon={Users} title="Manage users" sub="Invite teammates, suspend, archive" />
           <QuickLink
-            href="/dashboard/roles"
+            href="/dashboard/administrative/roles"
             icon={Lock}
             title="Roles & permissions"
             sub="Bundle permissions, assign to members"
           />
           <QuickLink
-            href="/dashboard/organizations"
+            href="/dashboard/administrative/organizations"
             icon={Building2}
             title="Organizations"
             sub="Manage workspaces inside your tenant"
           />
           <QuickLink
-            href="/dashboard/audit"
+            href="/dashboard/administrative/audit"
             icon={Activity}
             title="Audit log"
             sub="Every API call, with filters and search"
