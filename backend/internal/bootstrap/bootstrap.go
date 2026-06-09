@@ -296,6 +296,10 @@ func registerModules(
 	// unauth'd paths if the client sent a token anyway.
 	api.Use(authOpt)
 
+	// BillingGate runs AFTER authOpt so it can read the principal's org from
+	// context. Mutations on a locked org get a 402 here; reads always pass.
+	api.Use(subM.Middleware.BillingGate())
+
 	// Mount module routes. Note: auth-related sub-routes that require an
 	// authenticated principal pass authMW into their own group inside Routes().
 	tenantM.Handler.Routes(api, authMW, permFn)

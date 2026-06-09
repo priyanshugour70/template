@@ -48,6 +48,7 @@ export interface Subscription extends BaseEntity {
   currentPeriodStart?: ISODate;
   currentPeriodEnd?: ISODate;
   nextBillingAt?: ISODate;
+  lastBilledAt?: ISODate;
   cancelAt?: ISODate;
   cancelledAt?: ISODate;
   cancelReason?: string;
@@ -56,6 +57,11 @@ export interface Subscription extends BaseEntity {
   gatewayCustomerId?: string;
   gatewaySubscriptionId?: string;
   billingEmail?: string;
+  billingName?: string;
+  billingAddress?: JSONObject;
+  // Indian-state-aware billing — added in migration 012; drives which GST
+  // columns the invoice carries.
+  billingState?: string;
   features: string[];
   limits: Record<string, number>;
   metadata: JSONObject;
@@ -101,8 +107,25 @@ export type InvoiceStatus = "open" | "paid" | "void" | "uncollectible" | "refund
 export interface InvoiceLineItem {
   description: string;
   quantity: number;
-  unitCents: number;
-  amountCents: number;
+  // Old legacy shape (Phase 0).
+  unitCents?: number;
+  amountCents?: number;
+  // New richer shape used by the billing module (Phase 3+). Both shapes are
+  // optional so JSONB rows from the old plan-change flow still render.
+  unitPriceCents?: number;
+  totalCents?: number;
+  hsnSac?: string;
+  featureKey?: string;
+  taxableAmountCents?: number;
+  tax?: {
+    cgstCents: number;
+    sgstCents: number;
+    igstCents: number;
+    cgstPct: number;
+    sgstPct: number;
+    igstPct: number;
+    totalTaxCents: number;
+  };
 }
 
 export interface Invoice extends BaseEntity {
@@ -129,6 +152,15 @@ export interface Invoice extends BaseEntity {
   voidedAt?: ISODate;
   gateway?: string;
   gatewayInvoiceId?: string;
+  // GST + storage extensions added in migration 012 (Phase 1 of the billing
+  // overhaul). Optional in the type so old responses without these fields
+  // still type-check.
+  hsnSac?: string;
+  placeOfSupply?: string;
+  cgstCents?: number;
+  sgstCents?: number;
+  igstCents?: number;
+  pdfStorageKey?: string;
   metadata: JSONObject;
 }
 

@@ -10,6 +10,7 @@ const (
 	ChannelInviteEmail            = "app:invite.email"
 	ChannelPasswordResetEmail     = "app:password_reset.email"
 	ChannelUserWelcomeEmail       = "app:user.welcome.email"
+	ChannelBillingCycle           = "app:billing.cycle.tick"
 )
 
 // DefaultChannels returns channels the worker subscribes to by default.
@@ -23,5 +24,6 @@ func DefaultChannels() []string {
 		ChannelInviteEmail,
 		ChannelPasswordResetEmail,
 		ChannelUserWelcomeEmail,
+		ChannelBillingCycle,
 	}
 }

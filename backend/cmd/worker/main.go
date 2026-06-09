@@ -123,6 +123,13 @@ func main() {
 		passwordResetEmailHandler(mailer, log), log)
 	go runConsumer(ctx, consumer, queue.ChannelUserWelcomeEmail,
 		welcomeEmailHandler(mailer, log), log)
+	// Billing cycle tick — daily 02:00 IST or on-demand publishes by admins.
+	go runConsumer(ctx, consumer, queue.ChannelBillingCycle,
+		billingCycleHandler(subM.Service, log), log)
+	// Internal scheduler that publishes the daily tick. Uses a goroutine so
+	// it doesn't block shutdown.
+	go scheduleBillingCycle(ctx, producer, log)
+
 	go runConsumer(ctx, consumer, queue.ChannelNotifications, logHandler("notifications", log), log)
 	go runConsumer(ctx, consumer, queue.ChannelSearchSync, logHandler("search.sync", log), log)
 
@@ -282,6 +289,63 @@ func welcomeEmailHandler(mailer mail.Sender, log *zap.Logger) queue.Handler {
 		}
 		log.Info("welcome email dispatched", zap.String("to", p.Email))
 		return nil
+	}
+}
+
+// billingCycleHandler is the worker-side glue. Decodes the (optional) `at`
+// timestamp from the message (so on-demand admins can backdate), defaults to
+// now, and runs the cycle.
+func billingCycleHandler(svc *billing.Service, log *zap.Logger) queue.Handler {
+	return func(ctx context.Context, msg *queue.Message) error {
+		var p struct {
+			At string `json:"at,omitempty"`
+		}
+		_ = json.Unmarshal([]byte(msg.Payload), &p)
+		at := time.Now()
+		if p.At != "" {
+			if parsed, err := time.Parse(time.RFC3339, p.At); err == nil {
+				at = parsed
+			}
+		}
+		rep, err := svc.RunBillingCycle(ctx, at)
+		if err != nil {
+			log.Warn("billing cycle failed", zap.Error(err))
+			return err
+		}
+		log.Info("billing cycle report",
+			zap.Int("trials_expired", rep.TrialsExpired),
+			zap.Int("invoices_issued", rep.InvoicesIssued),
+			zap.Int("errors", len(rep.Errors)))
+		return nil
+	}
+}
+
+// scheduleBillingCycle publishes ChannelBillingCycle once a day at 02:00 IST.
+// Re-computes "next 02:00" on every iteration so DST + manual clock changes
+// don't drift the schedule. Skipped if the producer is the noop one.
+func scheduleBillingCycle(ctx context.Context, producer queue.Producer, log *zap.Logger) {
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		log.Warn("billing cycle: load IST failed, using UTC", zap.Error(err))
+		loc = time.UTC
+	}
+	for {
+		now := time.Now().In(loc)
+		next := time.Date(now.Year(), now.Month(), now.Day(), 2, 0, 0, 0, loc)
+		if !next.After(now) {
+			next = next.Add(24 * time.Hour)
+		}
+		wait := time.Until(next)
+		log.Info("billing cycle: next tick scheduled",
+			zap.Time("at", next), zap.Duration("in", wait))
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+			if err := producer.Publish(ctx, queue.ChannelBillingCycle, map[string]interface{}{}); err != nil {
+				log.Warn("billing cycle: publish tick failed", zap.Error(err))
+			}
+		}
 	}
 }
 

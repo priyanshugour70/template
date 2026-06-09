@@ -3,6 +3,7 @@ package billing
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -73,6 +74,13 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 		bill.GET("/transactions", perm("billing.transaction.read"), h.listTransactions)
 		bill.GET("/transactions/:id", perm("billing.transaction.read"), h.getTransaction)
 		bill.GET("/receipts/:id/pdf", perm("billing.transaction.read"), h.getReceiptPDF)
+
+		// Admin: trigger the billing cycle manually (Phase 7). The cron in the
+		// worker calls the same service method; this endpoint exists so admins
+		// can force a roll for debugging or after manual data fixes. Gated by
+		// billing.admin so only super-admins / billing operators hit it.
+		bill.POST("/admin/cycle/run", perm("billing.admin"), h.runBillingCycle)
+		bill.POST("/admin/trials/expire", perm("billing.admin"), h.expireTrials)
 	}
 }
 
@@ -492,6 +500,49 @@ func (h *Handler) getTransaction(c *gin.Context) {
 		return
 	}
 	response.OK(c, t)
+}
+
+// ── admin / cycle (Phase 7) ───────────────────────────────────────────────
+
+// runBillingCycle executes the cycle synchronously and returns the report.
+// Optional `at` (RFC3339) in the body lets admins backdate for testing.
+func (h *Handler) runBillingCycle(c *gin.Context) {
+	var body struct {
+		At string `json:"at,omitempty"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	at := time.Now()
+	if body.At != "" {
+		if parsed, err := time.Parse(time.RFC3339, body.At); err == nil {
+			at = parsed
+		}
+	}
+	rep, err := h.svc.RunBillingCycle(c.Request.Context(), at)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, rep)
+}
+
+// expireTrials runs only the trial-expiry step. Same idempotency rules apply.
+func (h *Handler) expireTrials(c *gin.Context) {
+	var body struct {
+		At string `json:"at,omitempty"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	at := time.Now()
+	if body.At != "" {
+		if parsed, err := time.Parse(time.RFC3339, body.At); err == nil {
+			at = parsed
+		}
+	}
+	n, err := h.svc.ExpireTrialsBefore(c.Request.Context(), at)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, gin.H{"expired": n})
 }
 
 // getReceiptPDF streams the receipt PDF. Same lazy-render + S3 cache pattern

@@ -793,10 +793,10 @@ function InvoiceDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => 
                   <TableCell>{li.description}</TableCell>
                   <TableCell className="text-right tabular-nums">{li.quantity}</TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMoney(li.unitCents, invoice.currency)}
+                    {formatMoney(li.unitCents ?? li.unitPriceCents ?? 0, invoice.currency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMoney(li.amountCents, invoice.currency)}
+                    {formatMoney(li.amountCents ?? li.totalCents ?? 0, invoice.currency)}
                   </TableCell>
                 </TableRow>
               ))}

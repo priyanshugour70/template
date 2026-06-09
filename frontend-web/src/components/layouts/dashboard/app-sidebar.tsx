@@ -77,7 +77,12 @@ const sections: NavSection[] = [
     label: "Billing",
     collapsible: true,
     items: [
-      { href: "/dashboard/subscription", label: "Subscription", icon: "credit-card", permission: "subscription.read" },
+      { href: "/dashboard/billing", label: "Overview", icon: "credit-card", permission: "billing.read" },
+      { href: "/dashboard/billing/subscription", label: "Subscription", icon: "credit-card", permission: "billing.read" },
+      { href: "/dashboard/billing/plan-builder", label: "Plan builder", icon: "grid", permission: "billing.quotation.manage" },
+      { href: "/dashboard/billing/quotations", label: "Quotations", icon: "file-text", permission: "billing.quotation.read" },
+      { href: "/dashboard/billing/invoices", label: "Invoices", icon: "file-text", permission: "billing.invoice.read" },
+      { href: "/dashboard/billing/transactions", label: "Transactions", icon: "file-text", permission: "billing.transaction.read" },
     ],
   },
   {
