@@ -44,6 +44,40 @@ func (s *Service) Get(ctx context.Context, tenantID *uuid.UUID, id uuid.UUID) (*
 	return row, nil
 }
 
+// ── aggregation (dashboard) ───────────────────────────────────────────────
+
+func (s *Service) Stats(ctx context.Context, tenantID *uuid.UUID, orgID *uuid.UUID, f StatsFilter) (*StatsSummary, error) {
+	out, err := s.repo.Stats(ctx, tenantID, orgID, f)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeInternal, "compute stats failed", err)
+	}
+	return out, nil
+}
+
+func (s *Service) Timeseries(ctx context.Context, tenantID *uuid.UUID, orgID *uuid.UUID, f StatsFilter, interval string) ([]TimeseriesBucket, error) {
+	out, err := s.repo.Timeseries(ctx, tenantID, orgID, f, interval)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeInternal, "compute timeseries failed", err)
+	}
+	return out, nil
+}
+
+func (s *Service) TopUsers(ctx context.Context, tenantID *uuid.UUID, orgID *uuid.UUID, f StatsFilter, limit int) ([]TopRow, error) {
+	return s.repo.TopUsers(ctx, tenantID, orgID, f, limit)
+}
+
+func (s *Service) TopFailingPaths(ctx context.Context, tenantID *uuid.UUID, orgID *uuid.UUID, f StatsFilter, limit int) ([]TopRow, error) {
+	return s.repo.TopFailingPaths(ctx, tenantID, orgID, f, limit)
+}
+
+func (s *Service) TopActions(ctx context.Context, tenantID *uuid.UUID, orgID *uuid.UUID, f StatsFilter, limit int) ([]TopRow, error) {
+	return s.repo.TopActions(ctx, tenantID, orgID, f, limit)
+}
+
+func (s *Service) StatusBreakdown(ctx context.Context, tenantID *uuid.UUID, orgID *uuid.UUID, f StatsFilter) ([]TopRow, error) {
+	return s.repo.StatusBreakdown(ctx, tenantID, orgID, f)
+}
+
 // ── worker consumer ────────────────────────────────────────────────────────
 
 // HandlerFunc returns a queue.Handler that decodes AuditEvent messages and

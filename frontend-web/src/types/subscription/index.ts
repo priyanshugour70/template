@@ -93,3 +93,98 @@ export interface FeatureSet {
   features: Record<string, boolean>;
   limits: Record<string, number>;
 }
+
+// ── invoices ───────────────────────────────────────────────────────────────
+
+export type InvoiceStatus = "open" | "paid" | "void" | "uncollectible" | "refunded";
+
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number;
+  unitCents: number;
+  amountCents: number;
+}
+
+export interface Invoice extends BaseEntity {
+  tenantId: ID;
+  organizationId: ID;
+  subscriptionId?: ID;
+  number: string;
+  status: InvoiceStatus;
+  currency: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  amountDueCents: number;
+  amountPaidCents: number;
+  couponCode?: string;
+  description?: string;
+  lineItems: InvoiceLineItem[];
+  periodStart?: ISODate;
+  periodEnd?: ISODate;
+  issuedAt: ISODate;
+  dueAt?: ISODate;
+  paidAt?: ISODate;
+  voidedAt?: ISODate;
+  gateway?: string;
+  gatewayInvoiceId?: string;
+  metadata: JSONObject;
+}
+
+// ── lifecycle DTOs ─────────────────────────────────────────────────────────
+
+export interface PauseRequest {
+  resumeAt?: ISODate;
+  reason?: string;
+}
+
+export interface UpdateBillingRequest {
+  billingEmail?: string;
+  billingName?: string;
+  billingAddress?: JSONObject;
+}
+
+export interface PreviewChangeRequest {
+  planCode: string;
+  billingCycle?: BillingCycle;
+  quantity?: number;
+  couponCode?: string;
+}
+
+export interface PreviewChangeResponse {
+  fromPlanCode: string;
+  toPlanCode: string;
+  billingCycle: BillingCycle;
+  currency: string;
+  baseAmountCents: number;
+  prorationCents: number;
+  couponCode?: string;
+  discountCents: number;
+  taxCents: number;
+  totalDueCents: number;
+  effectiveAt: ISODate;
+  isUpgrade: boolean;
+  unusedDaysRemaining: number;
+}
+
+export interface ValidateCouponRequest {
+  code: string;
+  planCode?: string;
+}
+
+export interface ValidateCouponResponse {
+  valid: boolean;
+  reason?: string;
+  code?: string;
+  name?: string;
+  percentOff?: number;
+  amountOffCents?: number;
+  currency?: string;
+  duration?: "once" | "forever" | "repeating";
+}
+
+export interface ChangePlanResponse {
+  subscription: Subscription;
+  invoice?: Invoice | null;
+}

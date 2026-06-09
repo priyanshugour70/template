@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -123,4 +124,75 @@ func (r *Repository) ListUsage(ctx context.Context, orgID uuid.UUID) ([]UsageCou
 		Order("period_start DESC").
 		Find(&out).Error
 	return out, err
+}
+
+// ── invoices ───────────────────────────────────────────────────────────────
+
+func (r *Repository) CreateInvoice(ctx context.Context, inv *Invoice) error {
+	return r.db.WithContext(ctx).Create(inv).Error
+}
+
+func (r *Repository) ListInvoices(ctx context.Context, orgID uuid.UUID, limit int) ([]Invoice, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	out := []Invoice{}
+	err := r.db.WithContext(ctx).
+		Where("organization_id = ?", orgID).
+		Order("issued_at DESC").
+		Limit(limit).
+		Find(&out).Error
+	return out, err
+}
+
+func (r *Repository) GetInvoice(ctx context.Context, orgID, id uuid.UUID) (*Invoice, error) {
+	var inv Invoice
+	if err := r.db.WithContext(ctx).
+		Where("id = ? AND organization_id = ?", id, orgID).
+		First(&inv).Error; err != nil {
+		return nil, err
+	}
+	return &inv, nil
+}
+
+// NextInvoiceNumber issues a monotonically-increasing per-tenant invoice
+// number. Cheap implementation: count existing rows + 1, formatted with a
+// year prefix. For higher-throughput tenants you'd swap this for a sequence.
+func (r *Repository) NextInvoiceNumber(ctx context.Context, tenantID uuid.UUID, year int) (string, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).
+		Model(&Invoice{}).
+		Where("tenant_id = ? AND issued_at >= make_timestamptz(?, 1, 1, 0, 0, 0)", tenantID, year).
+		Count(&n).Error; err != nil {
+		return "", err
+	}
+	return formatInvoiceNumber(year, int(n)+1), nil
+}
+
+func formatInvoiceNumber(year, seq int) string {
+	// e.g. INV-2026-000001
+	return fmt.Sprintf("INV-%04d-%06d", year, seq)
+}
+
+// ── coupons ────────────────────────────────────────────────────────────────
+
+func (r *Repository) GetCouponByCode(ctx context.Context, code string) (*Coupon, error) {
+	var c Coupon
+	if err := r.db.WithContext(ctx).
+		Where("code = ?", code).
+		First(&c).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (r *Repository) IncrementCouponRedemptions(ctx context.Context, couponID uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Model(&Coupon{}).
+		Where("id = ?", couponID).
+		UpdateColumn("redemptions", gorm.Expr("redemptions + 1")).Error
+}
+
+func (r *Repository) RecordCouponRedemption(ctx context.Context, red *CouponRedemption) error {
+	return r.db.WithContext(ctx).Create(red).Error
 }

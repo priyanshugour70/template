@@ -121,3 +121,133 @@ type FeatureSet struct {
 	Features map[string]bool  `json:"features"`
 	Limits   map[string]int64 `json:"limits"`
 }
+
+// ── invoices ───────────────────────────────────────────────────────────────
+
+type Invoice struct {
+	model.Base
+	TenantID         uuid.UUID   `gorm:"type:uuid;not null;index"      json:"tenantId"`
+	OrganizationID   uuid.UUID   `gorm:"type:uuid;not null;index"      json:"organizationId"`
+	SubscriptionID   *uuid.UUID  `gorm:"type:uuid"                      json:"subscriptionId,omitempty"`
+	Number           string      `gorm:"not null;uniqueIndex"          json:"number"`
+	Status           string      `gorm:"not null;default:'open'"       json:"status"`
+	Currency         string      `gorm:"not null;default:'INR'"        json:"currency"`
+	SubtotalCents    int64       `gorm:"not null;default:0"            json:"subtotalCents"`
+	DiscountCents    int64       `gorm:"not null;default:0"            json:"discountCents"`
+	TaxCents         int64       `gorm:"not null;default:0"            json:"taxCents"`
+	TotalCents       int64       `gorm:"not null;default:0"            json:"totalCents"`
+	AmountDueCents   int64       `gorm:"not null;default:0"            json:"amountDueCents"`
+	AmountPaidCents  int64       `gorm:"not null;default:0"            json:"amountPaidCents"`
+	CouponCode       string      `                                       json:"couponCode,omitempty"`
+	Description      string      `                                       json:"description,omitempty"`
+	LineItems        model.JSONB `gorm:"type:jsonb;default:'[]'::jsonb" json:"lineItems"`
+	PeriodStart      *time.Time  `                                       json:"periodStart,omitempty"`
+	PeriodEnd        *time.Time  `                                       json:"periodEnd,omitempty"`
+	IssuedAt         time.Time   `gorm:"not null;default:now()"        json:"issuedAt"`
+	DueAt            *time.Time  `                                       json:"dueAt,omitempty"`
+	PaidAt           *time.Time  `                                       json:"paidAt,omitempty"`
+	VoidedAt         *time.Time  `                                       json:"voidedAt,omitempty"`
+	Gateway          string      `                                       json:"gateway,omitempty"`
+	GatewayInvoiceID string      `                                       json:"gatewayInvoiceId,omitempty"`
+	Metadata         model.JSONB `gorm:"type:jsonb;default:'{}'::jsonb" json:"metadata"`
+}
+
+func (Invoice) TableName() string { return "subscription_invoices" }
+
+// LineItem is the shape we serialize into Invoice.LineItems.
+type LineItem struct {
+	Description string `json:"description"`
+	Quantity    int    `json:"quantity"`
+	UnitCents   int64  `json:"unitCents"`
+	AmountCents int64  `json:"amountCents"`
+}
+
+// ── coupons ────────────────────────────────────────────────────────────────
+
+type Coupon struct {
+	model.Base
+	Code            string      `gorm:"type:citext;not null;uniqueIndex" json:"code"`
+	Name            string      `gorm:"not null"                          json:"name"`
+	Description     string      `                                          json:"description,omitempty"`
+	PercentOff      *int        `gorm:"column:percent_off"               json:"percentOff,omitempty"`
+	AmountOffCents  *int64      `gorm:"column:amount_off_cents"          json:"amountOffCents,omitempty"`
+	Currency        string      `                                          json:"currency,omitempty"`
+	Duration        string      `gorm:"not null;default:'once'"          json:"duration"`
+	DurationMonths  *int        `gorm:"column:duration_months"           json:"durationMonths,omitempty"`
+	MaxRedemptions  *int        `gorm:"column:max_redemptions"           json:"maxRedemptions,omitempty"`
+	Redemptions     int         `gorm:"not null;default:0"               json:"redemptions"`
+	ValidFrom       *time.Time  `                                          json:"validFrom,omitempty"`
+	ValidUntil      *time.Time  `                                          json:"validUntil,omitempty"`
+	AppliesToPlans  model.JSONB `gorm:"type:jsonb;default:'[]'::jsonb"   json:"appliesToPlans"`
+	IsActive        bool        `gorm:"not null;default:true"            json:"isActive"`
+	Metadata        model.JSONB `gorm:"type:jsonb;default:'{}'::jsonb"   json:"metadata"`
+}
+
+func (Coupon) TableName() string { return "subscription_coupons" }
+
+type CouponRedemption struct {
+	ID             uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	CouponID       uuid.UUID  `gorm:"type:uuid;not null;index"                       json:"couponId"`
+	OrganizationID uuid.UUID  `gorm:"type:uuid;not null;index"                       json:"organizationId"`
+	SubscriptionID *uuid.UUID `gorm:"type:uuid"                                       json:"subscriptionId,omitempty"`
+	InvoiceID      *uuid.UUID `gorm:"type:uuid"                                       json:"invoiceId,omitempty"`
+	AmountOffCents int64      `gorm:"column:amount_off_cents;not null;default:0"     json:"amountOffCents"`
+	RedeemedAt     time.Time  `gorm:"not null;default:now()"                         json:"redeemedAt"`
+	CreatedBy      *uuid.UUID `gorm:"type:uuid"                                       json:"createdBy,omitempty"`
+}
+
+func (CouponRedemption) TableName() string { return "coupon_redemptions" }
+
+// ── DTOs (lifecycle) ──────────────────────────────────────────────────────
+
+type PauseRequest struct {
+	ResumeAt *time.Time `json:"resumeAt,omitempty"`
+	Reason   string     `json:"reason,omitempty"`
+}
+
+type UpdateBillingRequest struct {
+	BillingEmail   *string                `json:"billingEmail,omitempty"`
+	BillingName    *string                `json:"billingName,omitempty"`
+	BillingAddress map[string]interface{} `json:"billingAddress,omitempty"`
+}
+
+type PreviewChangeRequest struct {
+	PlanCode     string `json:"planCode" binding:"required"`
+	BillingCycle string `json:"billingCycle,omitempty"`
+	Quantity     int    `json:"quantity,omitempty"`
+	CouponCode   string `json:"couponCode,omitempty"`
+}
+
+// PreviewChangeResponse is what the UI renders before the user confirms a
+// plan switch. Amounts are minor units (cents/paise); UI formats.
+type PreviewChangeResponse struct {
+	FromPlanCode        string `json:"fromPlanCode"`
+	ToPlanCode          string `json:"toPlanCode"`
+	BillingCycle        string `json:"billingCycle"`
+	Currency            string `json:"currency"`
+	BaseAmountCents     int64  `json:"baseAmountCents"`
+	ProrationCents      int64  `json:"prorationCents"` // credit (-) or charge (+)
+	CouponCode          string `json:"couponCode,omitempty"`
+	DiscountCents       int64  `json:"discountCents"`
+	TaxCents            int64  `json:"taxCents"`
+	TotalDueCents       int64  `json:"totalDueCents"`
+	EffectiveAt         string `json:"effectiveAt"`
+	IsUpgrade           bool   `json:"isUpgrade"`
+	UnusedDaysRemaining int    `json:"unusedDaysRemaining"`
+}
+
+type ValidateCouponRequest struct {
+	Code     string `json:"code" binding:"required"`
+	PlanCode string `json:"planCode,omitempty"`
+}
+
+type ValidateCouponResponse struct {
+	Valid          bool   `json:"valid"`
+	Reason         string `json:"reason,omitempty"`
+	Code           string `json:"code,omitempty"`
+	Name           string `json:"name,omitempty"`
+	PercentOff     *int   `json:"percentOff,omitempty"`
+	AmountOffCents *int64 `json:"amountOffCents,omitempty"`
+	Currency       string `json:"currency,omitempty"`
+	Duration       string `json:"duration,omitempty"`
+}
