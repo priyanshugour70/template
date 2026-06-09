@@ -288,6 +288,52 @@ func (s *Service) UpdateMembership(ctx context.Context, id uuid.UUID, in UpdateM
 	return row, nil
 }
 
+// ForcePasswordReset marks the user as needing to change their password on
+// next login. Used by admins to force a rotation without an email round-trip.
+func (s *Service) ForcePasswordReset(ctx context.Context, id uuid.UUID) error {
+	patch := map[string]interface{}{"must_change_password": true}
+	if err := s.repo.UpdateUser(ctx, id, patch); err != nil {
+		if IsNotFound(err) {
+			return apperr.New(apperr.CodeNotFound, "user not found", nil)
+		}
+		return apperr.New(apperr.CodeInternal, "force password reset failed", err)
+	}
+	return nil
+}
+
+// ResetMFA disables MFA for the user and clears the secret + recovery codes.
+// Used when a user loses their device.
+func (s *Service) ResetMFA(ctx context.Context, id uuid.UUID) error {
+	patch := map[string]interface{}{
+		"mfa_enabled":        false,
+		"mfa_secret":         nil,
+		"mfa_recovery_codes": nil,
+	}
+	if err := s.repo.UpdateUser(ctx, id, patch); err != nil {
+		if IsNotFound(err) {
+			return apperr.New(apperr.CodeNotFound, "user not found", nil)
+		}
+		return apperr.New(apperr.CodeInternal, "reset MFA failed", err)
+	}
+	return nil
+}
+
+// UnlockUser clears the lock window and failed-login counter set by the
+// auth module's failed-attempt back-off.
+func (s *Service) UnlockUser(ctx context.Context, id uuid.UUID) error {
+	patch := map[string]interface{}{
+		"locked_until":       nil,
+		"failed_login_count": 0,
+	}
+	if err := s.repo.UpdateUser(ctx, id, patch); err != nil {
+		if IsNotFound(err) {
+			return apperr.New(apperr.CodeNotFound, "user not found", nil)
+		}
+		return apperr.New(apperr.CodeInternal, "unlock failed", err)
+	}
+	return nil
+}
+
 // UpdatePasswordHash sets the user's password hash and stamps the change time.
 // Called by the auth module from accept-invite, reset-password, change-password.
 func (s *Service) UpdatePasswordHash(ctx context.Context, id uuid.UUID, pwHash string) error {

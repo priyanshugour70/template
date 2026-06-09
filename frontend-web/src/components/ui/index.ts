@@ -132,3 +132,4 @@ export {
   CommandShortcut,
   CommandSeparator,
 } from "./command";
+export { JsonEditor, type JsonEditorProps } from "./json-editor";

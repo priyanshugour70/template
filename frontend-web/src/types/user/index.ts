@@ -58,6 +58,7 @@ export interface Membership extends BaseEntity {
   isBillingContact: boolean;
   jobTitle?: string;
   department?: string;
+  departmentId?: ID | null;
   employeeCode?: string;
   reportsTo?: ID;
   invitedBy?: ID;
@@ -66,6 +67,28 @@ export interface Membership extends BaseEntity {
   lastActiveAt?: ISODate;
   settings: JSONObject;
   metadata: JSONObject;
+}
+
+export interface UpdateMembershipRequest {
+  departmentId?: ID | null;
+  jobTitle?: string;
+  department?: string;
+  employeeCode?: string;
+  reportsTo?: ID | null;
+}
+
+export interface BulkUpdateMembershipsRequest {
+  membershipIds: ID[];
+  patch: UpdateMembershipRequest;
+}
+
+export interface BulkUpdateMembershipsResponse {
+  updated: number;
+  failed?: { membershipId: ID; error: string }[];
+}
+
+export interface EffectivePermissionsResponse {
+  permissions: string[];
 }
 
 // ── requests ───────────────────────────────────────────────────────────────
@@ -99,8 +122,13 @@ export interface UpdateUserRequest {
 
 export interface UserListQuery extends PaginatedQuery {
   status?: UserStatus;
+  role?: string;
   jobTitle?: string;
   department?: string;
+  departmentId?: ID;
+  mfa?: boolean;
+  lastLoginAfter?: ISODate;
+  lastLoginBefore?: ISODate;
   createdAfter?: ISODate;
   createdBefore?: ISODate;
 }
@@ -111,6 +139,7 @@ export interface InviteUserRequest {
   lastName?: string;
   jobTitle?: string;
   department?: string;
+  departmentId?: ID;
   organizationId: ID;
   roleKeys?: string[];
   message?: string;

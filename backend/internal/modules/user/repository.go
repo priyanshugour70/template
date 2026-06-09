@@ -141,6 +141,28 @@ func (r *Repository) ListUsersInOrg(
 	if filter.Department != "" {
 		q = q.Where("users.department ILIKE ?", "%"+filter.Department+"%")
 	}
+	if filter.DepartmentID != nil {
+		q = q.Where("m.department_id = ?", *filter.DepartmentID)
+	}
+	if filter.MFAEnabled != nil {
+		q = q.Where("users.mfa_enabled = ?", *filter.MFAEnabled)
+	}
+	if filter.LastLoginAfter != nil {
+		q = q.Where("users.last_login_at >= ?", *filter.LastLoginAfter)
+	}
+	if filter.LastLoginBefore != nil {
+		q = q.Where("users.last_login_at <= ?", *filter.LastLoginBefore)
+	}
+	if filter.Role != "" {
+		q = q.Where(`EXISTS (
+			SELECT 1
+			FROM membership_roles mr
+			JOIN roles r ON r.id = mr.role_id
+			WHERE mr.membership_id = m.id
+			  AND r.key = ?
+			  AND r.deleted_at IS NULL
+		)`, filter.Role)
+	}
 	if filter.CreatedAfter != nil {
 		q = q.Where("users.created_at >= ?", *filter.CreatedAfter)
 	}

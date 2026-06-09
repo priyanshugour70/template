@@ -151,13 +151,17 @@ type UpdateUserRequest struct {
 }
 
 type ListFilter struct {
-	Status       string
-	Search       string
-	Role         string
-	JobTitle     string
-	Department   string
-	CreatedAfter *time.Time
-	CreatedBefore *time.Time
+	Status          string
+	Search          string
+	Role            string // role key, e.g. "owner"
+	JobTitle        string
+	Department      string // legacy free-text
+	DepartmentID    *uuid.UUID
+	MFAEnabled      *bool
+	LastLoginAfter  *time.Time
+	LastLoginBefore *time.Time
+	CreatedAfter    *time.Time
+	CreatedBefore   *time.Time
 }
 
 // UpdateMembershipInput is the patch payload for PATCH /users/:id/memberships/:mid.
