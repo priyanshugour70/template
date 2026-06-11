@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useSetOnboardingState, useOnboardingState } from "@/hooks/onboarding/useOnboarding";
+import { useSetOnboardingState, useOnboardingState, useOnboardingSteps } from "@/hooks/onboarding/useOnboarding";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/providers";
@@ -32,6 +32,7 @@ export default function WelcomeStep() {
   const { user } = useAuth();
   const state = useOnboardingState();
   const setState = useSetOnboardingState();
+  const steps = useOnboardingSteps();
 
   const [role, setRole] = useState<string>(state.role ?? "");
   const [goals, setGoals] = useState<string[]>(state.goals ?? []);
@@ -50,12 +51,16 @@ export default function WelcomeStep() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">Step 1 of 6</p>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+          Step 1 of {steps.length}
+        </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
           Welcome{user?.firstName ? `, ${user.firstName}` : ""} 👋
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Help us tailor the setup. This takes about a minute.
+          {user?.isOwner
+            ? "Help us tailor the setup. This takes about a minute."
+            : "You've been invited. Confirm a couple of details and you're in."}
         </p>
       </div>
 

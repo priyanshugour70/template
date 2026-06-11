@@ -6,7 +6,9 @@ import type { SessionUser } from "@/lib/cookies/types";
 
 /**
  * Returns the current user and refreshes the session-display cookie so the
- * sidebar/header reflects the latest profile (avatar updates, name edits).
+ * sidebar/header reflects the latest profile (avatar updates, name edits)
+ * and the onboarding gate sees the right isOwner flag (set by the backend
+ * from the active membership).
  */
 export async function GET() {
   const upstream = await api.get<SessionUser & { email: string }>("/users/me");
@@ -21,6 +23,7 @@ export async function GET() {
     lastName: upstream.data.lastName,
     avatarUrl: upstream.data.avatarUrl,
     isSuperAdmin: upstream.data.isSuperAdmin,
+    isOwner: upstream.data.isOwner,
   });
   return NextResponse.json(upstream);
 }

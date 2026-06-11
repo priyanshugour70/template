@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useActiveBilling, useStartTrial } from "@/hooks/billing/useBilling";
 import { useSetOnboardingState } from "@/hooks/onboarding/useOnboarding";
+import { useRequireOwner } from "@/hooks/onboarding/useRequireOwner";
 import { toast } from "@/hooks/use-toast";
 
 // Onboarding plan step. The 4-plan-card UI was retired in Phase 10 of the
@@ -15,6 +16,8 @@ import { toast } from "@/hooks/use-toast";
 // they can build a custom plan from /dashboard/billing/plan-builder once
 // inside, picking features à la carte. Existing customers see "Continue".
 export default function PlanStep() {
+  // Owner-only step — invited members get bounced to /onboarding/profile.
+  useRequireOwner();
   const router = useRouter();
   const activeQ = useActiveBilling();
   const startTrial = useStartTrial();

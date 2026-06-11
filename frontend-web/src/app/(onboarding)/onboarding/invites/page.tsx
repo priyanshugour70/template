@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSetOnboardingState } from "@/hooks/onboarding/useOnboarding";
+import { useRequireOwner } from "@/hooks/onboarding/useRequireOwner";
 import { useRoles } from "@/hooks/rbac/useRBACQueries";
 import { useInviteUser } from "@/hooks/user/useUserQueries";
 import { toast } from "@/hooks/use-toast";
@@ -31,6 +32,8 @@ let rowSeq = 0;
 const nextRowId = () => `r${++rowSeq}`;
 
 export default function InvitesStep() {
+  // Owner-only step — invited members get bounced to /onboarding/profile.
+  useRequireOwner();
   const router = useRouter();
   const { activeOrganization } = useTenant();
   const rolesQ = useRoles();

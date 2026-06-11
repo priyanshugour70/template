@@ -3,7 +3,7 @@ BACKEND_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 COMPOSE := docker compose -f deployments/docker/docker-compose.yaml
 
 .PHONY: help deps build run run-api run-worker \
-	test test-integration lint fmt clean kill-8080 \
+	test test-integration lint fmt clean kill-8080 kill-workers \
 	migrate swagger \
 	install-hooks _docker-check docker-deps stack up down docker-up docker-down
 
@@ -15,6 +15,7 @@ help:
 	@echo "  run-api            run API server only"
 	@echo "  run-worker         run worker only"
 	@echo "  kill-8080          kill process using port 8080"
+	@echo "  kill-workers       kill stray worker-dev / api-dev processes (run when emails arrive in multiples)"
 	@echo "  swagger            generate swagger docs (requires swag CLI)"
 	@echo "  test               run unit tests"
 	@echo "  test-integration   run integration tests"
@@ -46,24 +47,36 @@ build:
 run:
 	@bash -c 'set -e; cd "$(BACKEND_ROOT)"; \
 		echo "Building API and worker (stop with Ctrl+C to pick up code changes)"; \
+		pkill -9 -f bin/worker-dev 2>/dev/null || true; \
+		pkill -9 -f bin/api-dev 2>/dev/null || true; \
 		go build -trimpath -o bin/api-dev ./cmd/api && \
 		go build -trimpath -o bin/worker-dev ./cmd/worker && \
 		bin/worker-dev & w=$$!; \
-		trap "kill $$w 2>/dev/null; wait $$w 2>/dev/null" EXIT INT TERM; \
+		trap "kill -TERM $$w 2>/dev/null; wait $$w 2>/dev/null; pkill -9 -f bin/worker-dev 2>/dev/null || true" EXIT INT TERM HUP; \
 		bin/api-dev; wait $$w 2>/dev/null'
 
 run-api:
 	@bash -c 'set -e; cd "$(BACKEND_ROOT)"; \
 		echo "Building API"; \
+		pkill -9 -f bin/api-dev 2>/dev/null || true; \
 		go build -trimpath -o bin/api-dev ./cmd/api && exec bin/api-dev'
 
 run-worker:
 	@bash -c 'set -e; cd "$(BACKEND_ROOT)"; \
 		echo "Building worker"; \
+		pkill -9 -f bin/worker-dev 2>/dev/null || true; \
 		go build -trimpath -o bin/worker-dev ./cmd/worker && exec bin/worker-dev'
 
 kill-8080:
 	@lsof -ti :8080 | xargs kill 2>/dev/null && echo "Freed port 8080." || echo "Nothing was using port 8080."
+
+# Hunt down stray worker-dev / api-dev processes left behind by prior runs.
+# Catches the common case where Ctrl+C in `make run` killed the API but the
+# worker survived as a zombie, leading to duplicate emails / audit-log PK
+# collisions as multiple workers consume the same pub/sub channel.
+kill-workers:
+	@pkill -9 -f bin/worker-dev 2>/dev/null && echo "Killed stray worker-dev processes." || echo "No worker-dev processes found."
+	@pkill -9 -f bin/api-dev 2>/dev/null && echo "Killed stray api-dev processes." || echo "No api-dev processes found."
 
 SWAG_VERSION ?= v1.16.6
 swagger:

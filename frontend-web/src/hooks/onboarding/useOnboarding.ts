@@ -6,7 +6,9 @@ import { userService } from "@/services/user";
 import { useAuth } from "@/providers";
 import type { JSONObject } from "@/types/common";
 
-export const ONBOARDING_STEPS = [
+// Full step set — used by tenant owners (founders) who need to brand the
+// workspace, invite teammates, and pick a plan.
+export const OWNER_ONBOARDING_STEPS = [
   "welcome",
   "profile",
   "workspace",
@@ -15,7 +17,26 @@ export const ONBOARDING_STEPS = [
   "done",
 ] as const;
 
-export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+// Minimal step set for invited members. The workspace, plan, and team are
+// already configured by the founder — invited users just confirm their own
+// profile and jump into the dashboard.
+export const MEMBER_ONBOARDING_STEPS = ["welcome", "profile", "done"] as const;
+
+// Backwards-compat union: still the same set of step identifiers, so callers
+// that import OnboardingStep don't break. The ordering used at runtime now
+// depends on isOwner.
+export const ONBOARDING_STEPS = OWNER_ONBOARDING_STEPS;
+
+export type OnboardingStep = (typeof OWNER_ONBOARDING_STEPS)[number];
+
+/** Returns the active step ordering for the current user. Owners get the
+ *  full 6-step flow; invited members get a 3-step (welcome / profile / done)
+ *  flow. */
+export function useOnboardingSteps(): readonly OnboardingStep[] {
+  const { user } = useAuth();
+  const isOwner = user?.isOwner === true;
+  return isOwner ? OWNER_ONBOARDING_STEPS : MEMBER_ONBOARDING_STEPS;
+}
 
 export interface OnboardingState {
   step?: OnboardingStep;

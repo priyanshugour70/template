@@ -193,10 +193,10 @@ func subscriptionInvalidateHandler(svc *billing.Service, log *zap.Logger) queue.
 }
 
 // inviteEmailHandler decodes auth.publishInviteEmail payloads and sends the
-// invitation template. The accept URL is built from the password-reset base
-// URL's origin (e.g. http://localhost:3000) + /auth/accept-invite, with the
-// token + email in the query string. Centralizing the URL here keeps the
-// auth service free of frontend-path knowledge.
+// invitation template. The accept URL is composed per-tenant from the slug +
+// apex sent in the payload — falls back to the legacy password-reset-base
+// origin if the publisher didn't include them (older versions of the auth
+// service).
 func inviteEmailHandler(mailer mail.Sender, cfg *config.Config, log *zap.Logger) queue.Handler {
 	return func(_ context.Context, msg *queue.Message) error {
 		var p struct {
@@ -205,6 +205,11 @@ func inviteEmailHandler(mailer mail.Sender, cfg *config.Config, log *zap.Logger)
 			Token          string `json:"token"`
 			OrganizationID string `json:"organizationId"`
 			TenantID       string `json:"tenantId"`
+			// Multi-tenant subdomain hints — populated by the modern publisher.
+			TenantSlug     string `json:"tenantSlug"`
+			Apex           string `json:"apex"`
+			FrontendScheme string `json:"frontendScheme"`
+			FrontendPort   string `json:"frontendPort"`
 		}
 		if err := json.Unmarshal([]byte(msg.Payload), &p); err != nil {
 			log.Warn("invite email decode failed", zap.Error(err))
@@ -214,13 +219,15 @@ func inviteEmailHandler(mailer mail.Sender, cfg *config.Config, log *zap.Logger)
 			log.Warn("invite email missing email or token", zap.String("inviteId", p.InviteID))
 			return nil
 		}
-		// Treat password reset base URL's origin as the frontend root. The
-		// invite UX lives under /auth/accept-invite — adjust if your frontend
-		// uses a different path.
-		acceptURL := buildFrontendURL(cfg.Auth.PasswordResetBaseURL, "/auth/accept-invite", map[string]string{
-			"token": p.Token,
-			"email": p.Email,
-		})
+		params := map[string]string{"token": p.Token, "email": p.Email}
+		acceptURL := buildTenantURL(p.TenantSlug, p.Apex, p.FrontendScheme, p.FrontendPort,
+			"/auth/accept-invite", params)
+		if acceptURL == "" {
+			// Legacy fallback — older publishers (or misconfigured envs) don't
+			// include the tenant subdomain. Use the password-reset base URL's
+			// origin, which at worst lands on the apex.
+			acceptURL = buildFrontendURL(cfg.Auth.PasswordResetBaseURL, "/auth/accept-invite", params)
+		}
 		// 7-day expiry is the auth module's default; render UTC for clarity.
 		expiresAt := time.Now().Add(7 * 24 * time.Hour).UTC().Format("02 Jan 2006 15:04 MST")
 		body := mail.EmailInvitation(acceptURL, expiresAt, "")
@@ -228,9 +235,35 @@ func inviteEmailHandler(mailer mail.Sender, cfg *config.Config, log *zap.Logger)
 			log.Warn("invite email send failed", zap.Error(err), zap.String("to", p.Email))
 			return err
 		}
-		log.Info("invite email dispatched", zap.String("to", p.Email))
+		log.Info("invite email dispatched", zap.String("to", p.Email), zap.String("acceptUrl", acceptURL))
 		return nil
 	}
+}
+
+// buildTenantURL composes https://{slug}.{apex}[:port]{path}?{params} from
+// the tenant-hosting hints carried in pub/sub payloads. Returns "" when the
+// hints are missing so callers can fall back to a legacy path. Dev-friendly:
+// when scheme is empty defaults to https, port may be "" in prod.
+func buildTenantURL(slug, apex, scheme, port, path string, params map[string]string) string {
+	slug = strings.TrimSpace(slug)
+	apex = strings.TrimSpace(apex)
+	if slug == "" || apex == "" {
+		return ""
+	}
+	if scheme == "" {
+		scheme = "https"
+	}
+	host := slug + "." + apex
+	if port != "" && port != "80" && port != "443" {
+		host = host + ":" + port
+	}
+	u := url.URL{Scheme: scheme, Host: host, Path: path}
+	q := u.Query()
+	for k, v := range params {
+		q.Set(k, v)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // passwordResetEmailHandler decodes the publisher's payload, builds the reset

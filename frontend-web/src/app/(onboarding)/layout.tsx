@@ -7,8 +7,8 @@ import type { ReactNode } from "react";
 
 import { useRequireAuth } from "@/hooks/auth/useRequireAuth";
 import {
-  ONBOARDING_STEPS,
   useOnboardingState,
+  useOnboardingSteps,
   type OnboardingStep,
 } from "@/hooks/onboarding/useOnboarding";
 import { cn } from "@/lib/cn";
@@ -20,25 +20,26 @@ interface StepDef {
   description: string;
 }
 
-const STEPS: StepDef[] = [
-  { step: "welcome", href: "/onboarding", label: "Welcome", description: "Tell us about you" },
-  { step: "profile", href: "/onboarding/profile", label: "Profile", description: "Personal details" },
-  { step: "workspace", href: "/onboarding/workspace", label: "Workspace", description: "Brand your org" },
-  { step: "invites", href: "/onboarding/invites", label: "Teammates", description: "Optional invites" },
-  { step: "plan", href: "/onboarding/plan", label: "Plan", description: "Pick a subscription" },
-  { step: "done", href: "/onboarding/done", label: "Finish", description: "Jump to the dashboard" },
-];
-
-function stepIndex(s?: OnboardingStep): number {
-  if (!s) return 0;
-  const i = ONBOARDING_STEPS.indexOf(s);
-  return i === -1 ? 0 : i;
-}
+// Catalogue of every step in the system. The active subset is filtered by
+// useOnboardingSteps() based on whether the user is the tenant owner.
+const STEP_CATALOGUE: Record<OnboardingStep, StepDef> = {
+  welcome: { step: "welcome", href: "/onboarding", label: "Welcome", description: "Tell us about you" },
+  profile: { step: "profile", href: "/onboarding/profile", label: "Profile", description: "Personal details" },
+  workspace: { step: "workspace", href: "/onboarding/workspace", label: "Workspace", description: "Brand your org" },
+  invites: { step: "invites", href: "/onboarding/invites", label: "Teammates", description: "Optional invites" },
+  plan: { step: "plan", href: "/onboarding/plan", label: "Plan", description: "Pick a subscription" },
+  done: { step: "done", href: "/onboarding/done", label: "Finish", description: "Jump to the dashboard" },
+};
 
 export default function OnboardingLayout({ children }: { children: ReactNode }) {
   const { loading } = useRequireAuth();
   const state = useOnboardingState();
   const pathname = usePathname();
+  // The active step list depends on the user's role. Owners see the full 6
+  // steps (workspace, plan, etc.); invited members see only welcome → profile
+  // → done because the tenant is already configured.
+  const activeSteps = useOnboardingSteps();
+  const STEPS: StepDef[] = activeSteps.map((s) => STEP_CATALOGUE[s]);
 
   if (loading) {
     return (
@@ -49,7 +50,8 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
   }
 
   const currentStepIdx = Math.max(0, STEPS.findIndex((s) => s.href === pathname));
-  const furthestStepIdx = stepIndex(state.step);
+  // Map the saved step (could be one only owners reach) into the active list.
+  const furthestStepIdx = Math.max(0, STEPS.findIndex((s) => s.step === state.step));
   const completedIdx = state.completed ? STEPS.length : furthestStepIdx;
   const progressPct = ((currentStepIdx + 1) / STEPS.length) * 100;
 

@@ -17,6 +17,10 @@ export interface SessionUser {
   lastName?: string;
   avatarUrl?: string;
   isSuperAdmin?: boolean;
+  /** True when the user is the owner of the active organization (tenant
+   * founder). Drives the onboarding flow — owners see the full workspace
+   * setup, invited members see a profile-only flow. */
+  isOwner?: boolean;
 }
 
 export interface SessionTenant {

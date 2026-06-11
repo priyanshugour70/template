@@ -31,6 +31,9 @@ type App struct {
 	// FrontendScheme is "http" (dev) or "https" (prod) — used when the backend
 	// composes a frontend URL it cannot infer from the request.
 	FrontendScheme string `mapstructure:"frontend_scheme"`
+	// FrontendPort is appended to the host when constructing frontend URLs in
+	// dev. Leave empty in prod (the scheme implies 80/443). Example: "3000".
+	FrontendPort string `mapstructure:"frontend_port"`
 }
 
 type Server struct {
@@ -195,6 +198,7 @@ func Load() (*Config, error) {
 	v.SetDefault("app.env", "development")
 	v.SetDefault("app.base_domain", "lvh.me")
 	v.SetDefault("app.frontend_scheme", "http")
+	v.SetDefault("app.frontend_port", "3000")
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.read_timeout_sec", 30)
 	v.SetDefault("server.write_timeout_sec", 30)

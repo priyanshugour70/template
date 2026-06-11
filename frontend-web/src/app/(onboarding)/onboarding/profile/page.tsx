@@ -59,9 +59,15 @@ export default function ProfileStep() {
         locale,
         avatarUrl: avatarUrl || undefined,
       });
-      await setState.mutateAsync({ patch: { step: "workspace" } });
+      // Owners proceed through workspace/teammates/plan; invited members
+      // skip straight to the done step — there's nothing tenant-wide to
+      // configure as a non-owner.
+      const isOwner = user?.isOwner === true;
+      const nextStep = isOwner ? "workspace" : "done";
+      const nextPath = isOwner ? "/onboarding/workspace" : "/onboarding/done";
+      await setState.mutateAsync({ patch: { step: nextStep } });
       await refreshUser();
-      router.push("/onboarding/workspace");
+      router.push(nextPath);
     } catch (e: unknown) {
       toast.error("Couldn't save", e instanceof Error ? e.message : undefined);
     }

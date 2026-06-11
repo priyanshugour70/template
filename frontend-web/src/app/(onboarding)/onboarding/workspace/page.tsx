@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSetOnboardingState } from "@/hooks/onboarding/useOnboarding";
+import { useRequireOwner } from "@/hooks/onboarding/useRequireOwner";
 import { useUpdateOrganization } from "@/hooks/tenant/useTenantQueries";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/cn";
@@ -43,6 +44,8 @@ const INDUSTRY_OPTIONS = [
 ];
 
 export default function WorkspaceStep() {
+  // Owner-only step — invited members get bounced to /onboarding/profile.
+  useRequireOwner();
   const router = useRouter();
   const { activeOrganization } = useTenant();
   const orgId = activeOrganization?.id ?? "";

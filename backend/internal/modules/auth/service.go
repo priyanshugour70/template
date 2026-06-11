@@ -588,6 +588,13 @@ func (s *Service) resolvePasswordResetBaseURL(ctx context.Context, userID uuid.U
 	if scheme == "" {
 		scheme = "https"
 	}
+	// In dev the frontend listens on :3000; in prod the scheme implies 80/443
+	// so the port is omitted. Configured via APP_FRONTEND_PORT.
+	port := strings.TrimSpace(s.cfg.App.FrontendPort)
+	portSuffix := ""
+	if port != "" && port != "80" && port != "443" {
+		portSuffix = ":" + port
+	}
 	if apex != "" {
 		var slug string
 		if primaryTenant != nil && *primaryTenant != uuid.Nil {
@@ -610,7 +617,7 @@ func (s *Service) resolvePasswordResetBaseURL(ctx context.Context, userID uuid.U
 			}
 		}
 		if slug != "" {
-			return scheme + "://" + slug + "." + apex + "/auth/reset-password"
+			return scheme + "://" + slug + "." + apex + portSuffix + "/auth/reset-password"
 		}
 	}
 	return s.cfg.Auth.PasswordResetBaseURL
@@ -776,13 +783,25 @@ func (s *Service) publishInviteEmail(ctx context.Context, inv *Invite, tokenStr 
 	if s.producer == nil {
 		return
 	}
-	_ = s.producer.Publish(ctx, queue.ChannelInviteEmail, map[string]interface{}{
+	// Resolve the tenant's subdomain so the worker can build a tenant-scoped
+	// accept URL (e.g. https://demifine.lssgoo.com/auth/accept-invite). Without
+	// this the worker would fall back to localhost and the link would 404 in
+	// production or land users on the apex (which has no /auth/accept-invite).
+	payload := map[string]interface{}{
 		"inviteId":       inv.ID,
 		"email":          inv.Email,
 		"token":          tokenStr,
 		"organizationId": inv.OrganizationID,
 		"tenantId":       inv.TenantID,
-	})
+		// Frontend hosting hints — the worker composes the URL from these.
+		"apex":           strings.TrimSpace(s.cfg.App.BaseDomain),
+		"frontendScheme": strings.TrimSpace(s.cfg.App.FrontendScheme),
+		"frontendPort":   strings.TrimSpace(s.cfg.App.FrontendPort),
+	}
+	if t, err := s.tenantSvc.GetTenant(ctx, inv.TenantID); err == nil {
+		payload["tenantSlug"] = t.Slug
+	}
+	_ = s.producer.Publish(ctx, queue.ChannelInviteEmail, payload)
 }
 
 func (s *Service) publishPasswordResetEmail(ctx context.Context, u *user.User, tokenStr, baseURL string) {

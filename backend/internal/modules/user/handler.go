@@ -75,17 +75,81 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 // ── handlers ───────────────────────────────────────────────────────────────
 
 func (h *Handler) me(c *gin.Context) {
-	uid := appctx.UserID(c.Request.Context())
+	ctx := c.Request.Context()
+	uid := appctx.UserID(ctx)
 	if uid == uuid.Nil {
 		response.Error(c, apperr.New(apperr.CodeUnauthorized, "no principal", nil))
 		return
 	}
-	u, err := h.svc.GetByID(c.Request.Context(), uid)
+	u, err := h.svc.GetByID(ctx, uid)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, u)
+
+	// Resolve `isOwner` from the active membership in the JWT. Required by the
+	// frontend to branch onboarding flows (owner sees workspace/plan setup;
+	// invited members skip them — tenant is already configured).
+	// Falls back to false when the principal has no active membership
+	// (shouldn't happen for authed routes, defence in depth).
+	isOwner := false
+	if mid := appctx.MembershipID(ctx); mid != uuid.Nil {
+		if m, err := h.svc.GetMembership(ctx, mid); err == nil && m != nil {
+			isOwner = m.IsOwner
+		}
+	}
+
+	// Embed the user document and overlay computed flags. Inline anonymous
+	// struct keeps the existing field shape stable for clients that decode
+	// the response as a User — they just ignore the new key.
+	response.OK(c, gin.H{
+		"id":                      u.ID,
+		"createdAt":               u.CreatedAt,
+		"updatedAt":               u.UpdatedAt,
+		"deletedAt":               u.DeletedAt,
+		"updatedBy":               u.UpdatedBy,
+		"email":                   u.Email,
+		"emailVerifiedAt":         u.EmailVerifiedAt,
+		"passwordChangedAt":       u.PasswordChangedAt,
+		"mustChangePassword":      u.MustChangePassword,
+		"firstName":               u.FirstName,
+		"middleName":              u.MiddleName,
+		"lastName":                u.LastName,
+		"displayName":             u.DisplayName,
+		"username":                u.Username,
+		"avatarUrl":               u.AvatarURL,
+		"coverUrl":                u.CoverURL,
+		"bio":                     u.Bio,
+		"phone":                   u.Phone,
+		"phoneVerifiedAt":         u.PhoneVerifiedAt,
+		"altEmail":                u.AltEmail,
+		"dateOfBirth":             u.DateOfBirth,
+		"gender":                  u.Gender,
+		"jobTitle":                u.JobTitle,
+		"department":              u.Department,
+		"employeeCode":            u.EmployeeCode,
+		"status":                  u.Status,
+		"locale":                  u.Locale,
+		"timezone":                u.Timezone,
+		"country":                 u.Country,
+		"state":                   u.State,
+		"city":                    u.City,
+		"address":                 u.Address,
+		"preferences":             u.Preferences,
+		"notificationPreferences": u.NotificationPreferences,
+		"metadata":                u.Metadata,
+		"lastLoginAt":             u.LastLoginAt,
+		"lastLoginIp":             u.LastLoginIP,
+		"lastLoginUserAgent":      u.LastLoginUserAgent,
+		"failedLoginCount":        u.FailedLoginCount,
+		"mfaEnabled":              u.MFAEnabled,
+		"isSuperAdmin":            u.IsSuperAdmin,
+		"primaryTenantId":         u.PrimaryTenantID,
+		"primaryOrganizationId":   u.PrimaryOrganizationID,
+		"marketingOptIn":          u.MarketingOptIn,
+		// NEW: tenant-owner flag (true for the founder, false for invited members).
+		"isOwner":                 isOwner,
+	})
 }
 
 func (h *Handler) updateMe(c *gin.Context) {
