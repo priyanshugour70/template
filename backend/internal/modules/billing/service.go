@@ -884,8 +884,17 @@ func (s *Service) ActivateQuotation(ctx context.Context, id uuid.UUID) (*Activat
 			"users.max": int64(row.UserCount),
 		}
 		limitsJSON, _ := json.Marshal(limits)
+		// Plan codes have a global UNIQUE constraint, but quotation numbers
+		// are scoped per-tenant — two tenants can both have QUO-2026-000002,
+		// which collided here before. Append the first 8 hex chars of the
+		// quotation UUID to keep human-readable codes while restoring
+		// uniqueness across tenants.
+		codeSuffix := strings.ReplaceAll(row.ID.String(), "-", "")
+		if len(codeSuffix) > 8 {
+			codeSuffix = codeSuffix[:8]
+		}
 		plan := Plan{
-			Code:         "custom-" + strings.ToLower(row.Number),
+			Code:         "custom-" + strings.ToLower(row.Number) + "-" + codeSuffix,
 			Name:         "Custom plan " + row.Number,
 			Tier:         99,
 			BillingCycle: "monthly",

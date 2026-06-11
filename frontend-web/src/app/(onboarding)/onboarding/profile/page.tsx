@@ -10,17 +10,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSetOnboardingState } from "@/hooks/onboarding/useOnboarding";
+import { useOnboardingSteps, useSetOnboardingState } from "@/hooks/onboarding/useOnboarding";
 import { toast } from "@/hooks/use-toast";
-import { useUpdateUser, useUser } from "@/hooks/user/useUserQueries";
+import { useUpdateMe, useUser } from "@/hooks/user/useUserQueries";
 import { useAuth } from "@/providers";
 
 export default function ProfileStep() {
   const router = useRouter();
   const { user, refreshUser } = useAuth();
   const profileQ = useUser(user?.id);
-  const update = useUpdateUser(user?.id ?? "");
+  // Self-edit via /users/me — no `user.update` permission required, which
+  // matters for invited members whose role doesn't grant admin perms.
+  const update = useUpdateMe();
   const setState = useSetOnboardingState();
+  const steps = useOnboardingSteps();
 
   const profile = profileQ.data;
   const [firstName, setFirstName] = useState("");
@@ -76,7 +79,9 @@ export default function ProfileStep() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">Step 2 of 6</p>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+          Step 2 of {steps.length}
+        </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">About you</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           A few details for your profile. You can change these later.

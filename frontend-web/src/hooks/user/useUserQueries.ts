@@ -63,6 +63,26 @@ export function useUpdateUser(id: string) {
   });
 }
 
+/**
+ * Self-update via PATCH /users/me. Unlike useUpdateUser this hits the
+ * permission-free `me` endpoint — any authed user can edit their own
+ * profile, no `user.update` RBAC needed. Use this for onboarding profile
+ * step, settings/profile page, and anywhere a user edits themselves.
+ */
+export function useUpdateMe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (req: UpdateUserRequest) => {
+      const res = await userService.updateMe(req);
+      if (!res.success) throw new Error(res.error?.message ?? "update profile failed");
+      return res.data!;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
 export function useSuspendUser() {
   const qc = useQueryClient();
   return useMutation({

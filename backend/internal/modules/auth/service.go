@@ -41,6 +41,16 @@ type Service struct {
 	cfg            *config.Config
 	log            *zap.Logger
 	refreshTTL     time.Duration
+	// billing is injected via the module wiring (auth.Module sets it after
+	// constructing the service) — kept optional so unit tests don't have to
+	// stub a full billing surface. nil means "skip subscription provisioning".
+	billing        billingPort
+}
+
+// billingPort mirrors auth.BillingPort but lives here so the Service field
+// declaration doesn't pull in the public Module API.
+type billingPort interface {
+	ProvisionTrial(ctx context.Context, tenantID, orgID uuid.UUID) (interface{}, error)
 }
 
 func NewService(
@@ -407,7 +417,22 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest, ip, userAge
 		return nil, err
 	}
 
-	// 6. Issue tokens — the response shape mirrors /auth/login.
+	// 6. Auto-provision a trial subscription on the default plan so the
+	//    tenant lands with a working billing state. Without this, the user
+	//    hits BillingGate (402) the moment they try any mutation, and the
+	//    onboarding plan step is the only way to recover. ProvisionTrial is
+	//    idempotent — calling it again is a no-op if a subscription exists.
+	//    Failure is non-fatal: log and continue. The user can still hit
+	//    /onboarding/plan → start-trial manually as a fallback.
+	if s.billing != nil {
+		if _, perr := s.billing.ProvisionTrial(ctx, t.ID, defaultOrg.ID); perr != nil {
+			s.log.Warn("register: provision trial failed",
+				zap.String("tenantId", t.ID.String()),
+				zap.Error(perr))
+		}
+	}
+
+	// 7. Issue tokens — the response shape mirrors /auth/login.
 	resp, err := s.issueLoginPair(ctx, u, t, m, ip, userAgent)
 	if err != nil {
 		return nil, err

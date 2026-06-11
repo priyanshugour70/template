@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -265,6 +266,18 @@ func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*AP
 	return out, nil
 }
 
+// authBillingAdapter exposes billing.Service to the auth module through
+// auth.BillingPort. The concrete return type (`*billing.Subscription`) is
+// widened to `any` because the caller doesn't need it — it just wants to
+// know the call succeeded.
+type authBillingAdapter struct {
+	billing *billing.Service
+}
+
+func (a authBillingAdapter) ProvisionTrial(ctx context.Context, tenantID, orgID uuid.UUID) (interface{}, error) {
+	return a.billing.ProvisionTrial(ctx, tenantID, orgID)
+}
+
 func newRedisClient(addr, password string, db int) *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr:         addr,
@@ -320,7 +333,12 @@ func registerModules(
 	groupM := group.New(db, rbacM.Service, log)
 	apikeyM := apikey.New(db, log)
 	webhookM := webhook.New(db, log)
-	authM := auth.New(db, tenantM.Service, userM.Service, rbacM.Service, cfg, cacheSvc, producer, log)
+	// Auth needs billing's ProvisionTrial to seed a default-plan trial on
+	// register. The signatures differ (billing returns *Subscription, auth's
+	// port returns any) so adapt at the composition root rather than leaking
+	// billing types into the auth module.
+	authBillingPort := authBillingAdapter{billing: subM.Service}
+	authM := auth.New(db, tenantM.Service, userM.Service, rbacM.Service, authBillingPort, cfg, cacheSvc, producer, log)
 	dashboardM := dashboard.New(db, log)
 
 	out.TenantSvc = tenantM.Service
