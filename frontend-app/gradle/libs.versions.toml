@@ -1,22 +1,24 @@
 [versions]
 # --- Build tooling --------------------------------------------------------
-agp = "9.0.1"
+# Downgraded from 9.0.1 → 8.13.1 to match the currently-installed Android
+# Studio (Narwhal stable). To go back to AGP 9.x, update AS to "Narwhal
+# Feature Drop" or newer, then bump these three (agp / kotlin / composeMultiplatform).
+agp = "8.13.1"
 android-compileSdk = "36"
 android-minSdk = "24"
 android-targetSdk = "36"
-kotlin = "2.4.0"
+kotlin = "2.1.20"
 
 # --- AndroidX -------------------------------------------------------------
-androidx-activity = "1.13.0"
-androidx-appcompat = "1.7.1"
-androidx-core = "1.19.0"
-androidx-espresso = "3.7.0"
-androidx-lifecycle = "2.11.0-beta01"
-androidx-testExt = "1.3.0"
+androidx-activity = "1.10.1"
+androidx-appcompat = "1.7.0"
+androidx-core = "1.15.0"
+androidx-espresso = "3.6.1"
+androidx-lifecycle = "2.8.4"
+androidx-testExt = "1.2.1"
 
 # --- Compose Multiplatform -----------------------------------------------
-composeMultiplatform = "1.11.1"
-material3 = "1.11.0-alpha07"
+composeMultiplatform = "1.7.3"
 
 # --- Networking / Serialization / Async ----------------------------------
 ktor = "3.0.3"
@@ -39,12 +41,12 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
-compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "composeMultiplatform" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiTooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
-compose-materialIconsCore = { module = "org.jetbrains.compose.material:material-icons-core", version = "1.7.3" }
+compose-materialIconsCore = { module = "org.jetbrains.compose.material:material-icons-core", version.ref = "composeMultiplatform" }
 
 # --- AndroidX ------------------------------------------------------------
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
@@ -52,8 +54,6 @@ androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "a
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-testExt-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-testExt" }
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "androidx-espresso" }
-androidx-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
-androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 
 # --- Kotlinx -------------------------------------------------------------
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
@@ -95,8 +95,13 @@ junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
-androidMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+# Classic Android library plugin — works with AGP 8.x. AGP 9 introduced a new
+# KMP-specific plugin id; if you upgrade, swap this back to
+# `com.android.kotlin.multiplatform.library` and use the `androidLibrary { ... }`
+# DSL inside `kotlin { ... }`.
+androidLibrary = { id = "com.android.library", version.ref = "agp" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

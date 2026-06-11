@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="iosApp" type="AppleAppRunConfigurationType" factoryName="Apple App">
+    <option name="XCODE_PROJECT_PATH" value="$PROJECT_DIR$/iosApp/iosApp.xcodeproj" />
+    <option name="SCHEME_NAME" value="iosApp" />
+    <option name="XCODE_DERIVED_DATA_CUSTOM_PATH" value="" />
+    <option name="LAUNCH_ACTION" value="iOS_PHYSICAL_OR_SIMULATOR" />
+    <option name="LAUNCH_DESTINATION_INDEX" value="0" />
+    <method v="2">
+      <option name="com.jetbrains.cidr.execution.build.CidrBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+    </method>
+  </configuration>
+</component>
