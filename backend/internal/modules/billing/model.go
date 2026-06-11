@@ -396,6 +396,19 @@ type CreateQuotationRequest struct {
 	Notes          string                 `json:"notes,omitempty"           binding:"omitempty,max=2000"`
 }
 
+// CreateQuotationFromPlanRequest mints a quotation by copying a public plan's
+// features verbatim. Used by the onboarding "pick a paid plan" flow so users
+// can land on /dashboard/billing/quotations/<id> with one click and pay.
+type CreateQuotationFromPlanRequest struct {
+	PlanCode       string                 `json:"planCode"                  binding:"required,min=1,max=64"`
+	UserCount      int                    `json:"userCount,omitempty"       binding:"omitempty,min=1"`
+	CustomerState  string                 `json:"customerState,omitempty"   binding:"omitempty,max=64"`
+	BillingEmail   string                 `json:"billingEmail,omitempty"    binding:"omitempty,email,max=254"`
+	BillingName    string                 `json:"billingName,omitempty"     binding:"omitempty,max=200"`
+	BillingAddress map[string]interface{} `json:"billingAddress,omitempty"`
+	Notes          string                 `json:"notes,omitempty"           binding:"omitempty,max=2000"`
+}
+
 // UpdateQuotationRequest patches a draft. All fields optional. Allowed only
 // when status='draft'.
 type UpdateQuotationRequest struct {

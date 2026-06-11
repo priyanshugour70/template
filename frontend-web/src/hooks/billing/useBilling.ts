@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { billingService } from "@/services/billing";
+import { billingService, type CreateQuotationFromPlanRequest } from "@/services/billing";
 import type {
   CreateQuotationRequest,
   PreviewQuoteRequest,
@@ -14,6 +14,7 @@ import type {
 const ROOT = "billing" as const;
 const KEY = {
   features: [ROOT, "features"] as const,
+  plans: [ROOT, "plans"] as const,
   active: [ROOT, "subscription", "active"] as const,
   quotations: (status?: string) => [ROOT, "quotations", status ?? "_all"] as const,
   quotation: (id: string) => [ROOT, "quotation", id] as const,
@@ -48,6 +49,32 @@ export function usePreviewQuote() {
       if (!res.success) throw new Error(res.error?.message ?? "preview failed");
       return res.data!;
     },
+  });
+}
+
+/** Public plan catalogue. Driven by billing_plans.is_active + is_public. */
+export function usePlans() {
+  return useQuery({
+    queryKey: KEY.plans,
+    queryFn: async () => {
+      const res = await billingService.listPlans();
+      if (!res.success) throw new Error(res.error?.message ?? "plans failed");
+      return res.data ?? [];
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** One-click "Pick this plan" — returns a draft Quotation ready for review. */
+export function useCreateQuotationFromPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (req: CreateQuotationFromPlanRequest) => {
+      const res = await billingService.createQuotationFromPlan(req);
+      if (!res.success) throw new Error(res.error?.message ?? "create quotation failed");
+      return res.data!;
+    },
+    onSuccess: () => bust(qc),
   });
 }
 

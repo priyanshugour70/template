@@ -7,6 +7,7 @@ import type {
   Feature,
   FeatureSet,
   Invoice,
+  Plan,
   PreviewQuoteRequest,
   Quotation,
   Quote,
@@ -19,12 +20,24 @@ import type {
   UsageCounter,
 } from "@/types/billing";
 
+export interface CreateQuotationFromPlanRequest {
+  planCode: string;
+  userCount?: number;
+  customerState?: string;
+  billingEmail?: string;
+  billingName?: string;
+  billingAddress?: Record<string, unknown>;
+  notes?: string;
+}
+
 // Every billing endpoint lives under /api/v1/billing/*. Phase 10 retired the
 // legacy /subscription-plans + /subscriptions/* surface; this service is the
 // single source of truth for the client.
 export const billingService = {
   // catalog + quote preview
   listFeatures: () => api.get<Feature[]>("/billing/features"),
+  // Public plan catalogue used by onboarding / pricing pages.
+  listPlans: () => api.get<Plan[]>("/billing/plans"),
   previewQuote: (req: PreviewQuoteRequest) =>
     api.post<Quote>("/billing/quotations/preview", req),
 
@@ -34,6 +47,9 @@ export const billingService = {
   getQuotation: (id: string) => api.get<Quotation>(`/billing/quotations/${id}`),
   createQuotation: (req: CreateQuotationRequest) =>
     api.post<Quotation>("/billing/quotations", req),
+  // One-click: pick a plan code, get a fully-priced draft quotation back.
+  createQuotationFromPlan: (req: CreateQuotationFromPlanRequest) =>
+    api.post<Quotation>("/billing/quotations/from-plan", req),
   updateQuotation: (id: string, req: UpdateQuotationRequest) =>
     api.patch<Quotation>(`/billing/quotations/${id}`, req),
   deleteQuotation: (id: string) => api.delete<unknown>(`/billing/quotations/${id}`),

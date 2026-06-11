@@ -35,6 +35,16 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 		a.POST("/reset-password", middleware.RateLimit(10), h.resetPassword)
 		a.POST("/accept-invite", middleware.RateLimit(5), h.acceptInvite)
 		a.POST("/register", middleware.RateLimit(5), h.register)
+		// Multi-tenant subdomain support — both public:
+		//   /tenant-by-slug : tenant subdomain pages call this to paint brand
+		//                     and resolve tenant_id before login.
+		//   /check-slug     : signup form calls this for inline availability.
+		//   /handoff/consume: tenant subdomain swaps a one-time apex token for
+		//                     a real access+refresh pair (sets cookies scoped
+		//                     to the subdomain).
+		a.GET("/tenant-by-slug", middleware.RateLimit(60), h.tenantBySlug)
+		a.GET("/check-slug", middleware.RateLimit(30), h.checkSlug)
+		a.POST("/handoff/consume", middleware.RateLimit(20), h.handoffConsume)
 	}
 	authed := g.Group("/auth", auth)
 	{
@@ -43,6 +53,9 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 		authed.POST("/change-password", h.changePassword)
 		authed.GET("/sessions", h.listSessions)
 		authed.DELETE("/sessions/:jti", h.revokeSession)
+		// /handoff/issue is authed — only an already-logged-in apex session can
+		// mint a handoff token to redirect to a tenant subdomain.
+		authed.POST("/handoff/issue", h.handoffIssue)
 	}
 	invites := g.Group("/invites", auth)
 	{
@@ -205,6 +218,46 @@ func (h *Handler) acceptInvite(c *gin.Context) {
 		return
 	}
 	out, err := h.svc.AcceptInvite(c.Request.Context(), req, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+// ── multi-tenant subdomain handlers ────────────────────────────────────────
+
+func (h *Handler) tenantBySlug(c *gin.Context) {
+	slug := c.Query("slug")
+	out, err := h.svc.TenantBySlug(c.Request.Context(), slug)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h *Handler) checkSlug(c *gin.Context) {
+	out := h.svc.CheckSlug(c.Request.Context(), c.Query("slug"))
+	response.OK(c, out)
+}
+
+func (h *Handler) handoffIssue(c *gin.Context) {
+	out, err := h.svc.IssueHandoff(c.Request.Context())
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h *Handler) handoffConsume(c *gin.Context) {
+	var req HandoffConsumeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
+		return
+	}
+	out, err := h.svc.ConsumeHandoff(c.Request.Context(), req.Token, c.ClientIP(), c.Request.UserAgent())
 	if err != nil {
 		response.Error(c, err)
 		return

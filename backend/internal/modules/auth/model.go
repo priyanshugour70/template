@@ -184,3 +184,42 @@ type UserSummary struct {
 	AvatarURL    string    `json:"avatarUrl,omitempty"`
 	IsSuperAdmin bool      `json:"isSuperAdmin"`
 }
+
+// ── tenant lookup (public) ─────────────────────────────────────────────────
+
+// TenantBySlugResponse is returned by GET /auth/tenant-by-slug. Public —
+// returns ONLY display-safe brand fields so that a tenant subdomain can paint
+// the login page before the user has authenticated.
+type TenantBySlugResponse struct {
+	ID           uuid.UUID `json:"id"`
+	Slug         string    `json:"slug"`
+	Name         string    `json:"name"`
+	LogoURL      string    `json:"logoUrl,omitempty"`
+	PrimaryColor string    `json:"primaryColor,omitempty"`
+}
+
+// CheckSlugResponse is returned by GET /auth/check-slug. Used by the signup
+// form so users see "available / taken / reserved" feedback as they type.
+type CheckSlugResponse struct {
+	Slug      string `json:"slug"`
+	Available bool   `json:"available"`
+	// Reason is set when Available is false: "taken" | "reserved" | "invalid".
+	Reason string `json:"reason,omitempty"`
+}
+
+// ── SSO handoff (apex → tenant subdomain) ──────────────────────────────────
+
+// HandoffIssueResponse is returned by POST /auth/handoff/issue to an
+// authenticated caller. The token is single-use and short-lived; redirect the
+// browser to {tenant-subdomain}/auth/handoff?token=... to consume it.
+type HandoffIssueResponse struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Tenant    DiscoveredTenant `json:"tenant"`
+}
+
+// HandoffConsumeRequest is the public payload that swaps a handoff token for
+// a real access+refresh token pair on the target tenant subdomain.
+type HandoffConsumeRequest struct {
+	Token string `json:"token" binding:"required"`
+}

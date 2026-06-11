@@ -34,10 +34,18 @@ func (h *Handler) Routes(g *gin.RouterGroup, auth gin.HandlerFunc, perm Permissi
 		// Catalog + live quote.
 		bill.GET("/features", perm("billing.read"), h.listFeatures)
 		bill.POST("/quotations/preview", perm("billing.read"), h.previewQuote)
+		// Public plan catalogue — drives the onboarding plan-grid and any
+		// marketing pricing page. No permission gate: every authed user can
+		// browse plans (catalog data, not tenant data).
+		bill.GET("/plans", h.listPlans)
 
 		// Quotation lifecycle (Phase 3).
 		bill.GET("/quotations", perm("billing.quotation.read"), h.listQuotations)
 		bill.POST("/quotations", perm("billing.quotation.manage"), h.createQuotation)
+		// One-click "Pick this plan" — wraps CreateQuotation and copies the
+		// chosen plan's feature list. Same perm as CreateQuotation because
+		// the result is identical: a draft quotation row for the org.
+		bill.POST("/quotations/from-plan", perm("billing.quotation.manage"), h.createQuotationFromPlan)
 		bill.GET("/quotations/:id", perm("billing.quotation.read"), h.getQuotation)
 		bill.PATCH("/quotations/:id", perm("billing.quotation.manage"), h.updateQuotation)
 		bill.DELETE("/quotations/:id", perm("billing.quotation.manage"), h.deleteQuotation)
@@ -253,6 +261,29 @@ func (h *Handler) listQuotations(c *gin.Context) {
 		return
 	}
 	response.PaginatedOK(c, rows, p.Page, p.Limit, int(total))
+}
+
+func (h *Handler) listPlans(c *gin.Context) {
+	plans, err := h.svc.ListPublicPlans(c.Request.Context())
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.OK(c, plans)
+}
+
+func (h *Handler) createQuotationFromPlan(c *gin.Context) {
+	var req CreateQuotationFromPlanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.New(apperr.CodeValidation, "invalid request body", err))
+		return
+	}
+	q, err := h.svc.CreateQuotationFromPlan(c.Request.Context(), req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Created(c, q)
 }
 
 func (h *Handler) createQuotation(c *gin.Context) {

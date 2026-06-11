@@ -151,6 +151,16 @@ func (s *Service) UpdateTenant(ctx context.Context, id uuid.UUID, req UpdateTena
 	return s.GetTenant(ctx, id)
 }
 
+// HardDeleteTenant releases the unique slug by physically deleting the row.
+// Intended for failed-signup rollback only; downstream rows (organizations,
+// memberships) are removed by ON DELETE CASCADE.
+func (s *Service) HardDeleteTenant(ctx context.Context, id uuid.UUID) error {
+	if err := s.repo.HardDeleteTenant(ctx, id); err != nil {
+		return apperr.New(apperr.CodeInternal, "hard delete tenant failed", err)
+	}
+	return nil
+}
+
 func (s *Service) ArchiveTenant(ctx context.Context, id uuid.UUID) error {
 	if err := s.repo.ArchiveTenant(ctx, id); err != nil {
 		if IsNotFound(err) {

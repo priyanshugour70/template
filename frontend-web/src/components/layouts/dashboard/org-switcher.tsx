@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Building2 } from "lucide-react";
+import { Check, ChevronDown, Building2, ExternalLink } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { buildApexUrl } from "@/lib/tenant/subdomain";
 import { authService } from "@/services/auth";
 import { useTenant } from "@/providers";
 
@@ -83,6 +84,13 @@ export function OrgSwitcher() {
             );
           })
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="gap-2">
+          <a href={buildApexUrl({ path: "/auth/login" })} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>Switch workspace…</span>
+          </a>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

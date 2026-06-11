@@ -17,8 +17,9 @@ import {
   readRefreshToken,
   writeTokens,
 } from "@/lib/cookies/server";
-import { COOKIE_ACCESS } from "@/lib/cookies/names";
-import { cookies } from "next/headers";
+import { COOKIE_ACCESS, COOKIE_SESSION_TENANT } from "@/lib/cookies/names";
+import { extractSubdomain, getApexDomain } from "@/lib/tenant/subdomain";
+import { cookies, headers } from "next/headers";
 
 const BACKEND = (process.env.API_URL ?? "http://localhost:8080").replace(/\/$/, "");
 
@@ -91,6 +92,41 @@ async function proxy(req: Request, { params }: Ctx) {
 
   const cookieStore = await cookies();
   let accessToken = cookieStore.get(COOKIE_ACCESS)?.value;
+
+  // Tenant guard: when a session is present, its tenant slug must match the
+  // subdomain the request was served on. Mismatch implies a stale or pasted
+  // cookie — refuse to forward and force a re-login. Public auth endpoints
+  // (login/discover/handoff/...) bypass the check; they need to work on the
+  // apex (no subdomain) and on tenant subdomains alike.
+  const joinedPath = path.join("/");
+  const isAuthPath = joinedPath.startsWith("auth/");
+  if (accessToken && !isAuthPath) {
+    const h = await headers();
+    const slugFromHost = extractSubdomain(h.get("host"), getApexDomain());
+    const sessionTenantRaw = cookieStore.get(COOKIE_SESSION_TENANT)?.value;
+    let sessionSlug: string | null = null;
+    if (sessionTenantRaw) {
+      try {
+        const t = JSON.parse(sessionTenantRaw) as { slug?: string };
+        sessionSlug = t.slug?.toLowerCase() ?? null;
+      } catch {
+        sessionSlug = null;
+      }
+    }
+    if (slugFromHost && sessionSlug && slugFromHost !== sessionSlug) {
+      await clearAllAuthCookies();
+      return Response.json(
+        {
+          success: false,
+          error: {
+            code: "TENANT_MISMATCH",
+            message: "session tenant does not match this subdomain",
+          },
+        },
+        { status: 401 },
+      );
+    }
+  }
 
   let upstream = await forward(req, target, accessToken);
 

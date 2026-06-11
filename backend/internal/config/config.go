@@ -24,6 +24,13 @@ type Config struct {
 
 type App struct {
 	Env string `mapstructure:"env"`
+	// BaseDomain is the apex that frontends are hosted under, e.g. "lssgoo.com".
+	// Used to construct tenant-aware URLs (password reset link, handoff redirect,
+	// CORS wildcard) and to recognise subdomains on incoming requests.
+	BaseDomain string `mapstructure:"base_domain"`
+	// FrontendScheme is "http" (dev) or "https" (prod) — used when the backend
+	// composes a frontend URL it cannot infer from the request.
+	FrontendScheme string `mapstructure:"frontend_scheme"`
 }
 
 type Server struct {
@@ -72,7 +79,13 @@ type Redis struct {
 }
 
 type CORS struct {
+	// AllowedOrigins is the legacy comma-separated explicit allow-list. Still
+	// honoured but the recommended way is now AllowedApex (wildcards).
 	AllowedOrigins string `mapstructure:"allowed_origins"`
+	// AllowedApex is the bare apex domain (e.g. "lssgoo.com"). Both the apex
+	// and every subdomain (`*.<apex>`) are allowed over https. Empty disables
+	// wildcard matching and falls back to AllowedOrigins only.
+	AllowedApex string `mapstructure:"allowed_apex"`
 }
 
 // Auth holds only the essentials for a JWT-based auth flow.
@@ -83,6 +96,9 @@ type Auth struct {
 	AccessTokenMinutes   int    `mapstructure:"access_token_minutes"`
 	RefreshTokenDays     int    `mapstructure:"refresh_token_days"`
 	PasswordResetBaseURL string `mapstructure:"password_reset_base_url"`
+	// HandoffTTLSeconds is how long a single-use SSO handoff token is valid.
+	// Used by the apex → tenant subdomain login redirect. Keep short.
+	HandoffTTLSeconds int `mapstructure:"handoff_ttl_seconds"`
 }
 
 type SMTP struct {
@@ -177,6 +193,8 @@ func Load() (*Config, error) {
 	v.AutomaticEnv()
 
 	v.SetDefault("app.env", "development")
+	v.SetDefault("app.base_domain", "lvh.me")
+	v.SetDefault("app.frontend_scheme", "http")
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.read_timeout_sec", 30)
 	v.SetDefault("server.write_timeout_sec", 30)
@@ -199,7 +217,8 @@ func Load() (*Config, error) {
 	v.SetDefault("redis.db", 2)
 	v.SetDefault("redis.queue_db", 3)
 
-	v.SetDefault("cors.allowed_origins", "http://localhost:3000,http://127.0.0.1:3000")
+	v.SetDefault("cors.allowed_origins", "http://localhost:3000,http://127.0.0.1:3000,http://lvh.me:3000")
+	v.SetDefault("cors.allowed_apex", "")
 
 	v.SetDefault("smtp.host", "")
 	v.SetDefault("smtp.port", 587)
@@ -211,7 +230,8 @@ func Load() (*Config, error) {
 	v.SetDefault("auth.jwt_secret", devJWTPlaceholder)
 	v.SetDefault("auth.access_token_minutes", 15)
 	v.SetDefault("auth.refresh_token_days", 7)
-	v.SetDefault("auth.password_reset_base_url", "http://localhost:3000/reset-password")
+	v.SetDefault("auth.password_reset_base_url", "")
+	v.SetDefault("auth.handoff_ttl_seconds", 60)
 
 	v.SetDefault("assets.s3_region", "")
 	v.SetDefault("assets.s3_bucket", "")
@@ -264,8 +284,10 @@ func (c *Config) Validate() error {
 	if !isProd {
 		return nil
 	}
-	if countAllowedCORSOrigins(c.CORS.AllowedOrigins) == 0 {
-		return fmt.Errorf("config: APP_ENV=%q requires at least one non-empty origin in CORS_ALLOWED_ORIGINS (comma-separated)", c.App.Env)
+	// In production we require either an explicit allow-list or a configured
+	// apex domain (the apex covers `*.<apex>` via wildcard match).
+	if countAllowedCORSOrigins(c.CORS.AllowedOrigins) == 0 && strings.TrimSpace(c.CORS.AllowedApex) == "" {
+		return fmt.Errorf("config: APP_ENV=%q requires either CORS_ALLOWED_ORIGINS or CORS_ALLOWED_APEX to be set", c.App.Env)
 	}
 	// Reject wildcard origins in production — a single "*" cancels every CSRF
 	// and origin-pinning benefit the explicit allow-list provides.

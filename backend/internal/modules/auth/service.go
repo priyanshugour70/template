@@ -103,6 +103,60 @@ func (s *Service) Discover(ctx context.Context, email string) ([]DiscoveredTenan
 	return out, nil
 }
 
+// ── tenant lookup (public) ─────────────────────────────────────────────────
+
+// TenantBySlug returns the brand-safe public projection of a tenant. Used by
+// the tenant subdomain login page (acme.lssgoo.com) to paint the tenant's
+// logo + name before the user has a session. Returns nil + nil for an unknown
+// slug — callers should NOT leak existence either way to the user, but we
+// distinguish here so the handler can choose a 404.
+func (s *Service) TenantBySlug(ctx context.Context, slug string) (*TenantBySlugResponse, error) {
+	slug = strings.ToLower(strings.TrimSpace(slug))
+	if slug == "" {
+		return nil, apperr.New(apperr.CodeValidation, "slug is required", nil)
+	}
+	if IsReservedSlug(slug) {
+		return nil, apperr.New(apperr.CodeNotFound, "tenant not found", nil)
+	}
+	t, err := s.tenantSvc.GetTenantBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if t.Status == "archived" || t.Status == "suspended" {
+		return nil, apperr.New(apperr.CodeNotFound, "tenant not found", nil)
+	}
+	return &TenantBySlugResponse{
+		ID:           t.ID,
+		Slug:         t.Slug,
+		Name:         t.Name,
+		LogoURL:      t.LogoURL,
+		PrimaryColor: t.PrimaryColor,
+	}, nil
+}
+
+// CheckSlug reports whether a slug is available for tenant registration. Used
+// by the signup form for inline feedback. Always returns a CheckSlugResponse;
+// availability is encoded in the body.
+func (s *Service) CheckSlug(ctx context.Context, slug string) *CheckSlugResponse {
+	slug = strings.ToLower(strings.TrimSpace(slug))
+	if slug == "" || len(slug) < 2 || len(slug) > 64 {
+		return &CheckSlugResponse{Slug: slug, Available: false, Reason: "invalid"}
+	}
+	for _, r := range slug {
+		valid := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-'
+		if !valid {
+			return &CheckSlugResponse{Slug: slug, Available: false, Reason: "invalid"}
+		}
+	}
+	if IsReservedSlug(slug) {
+		return &CheckSlugResponse{Slug: slug, Available: false, Reason: "reserved"}
+	}
+	if existing, err := s.tenantSvc.GetTenantBySlug(ctx, slug); err == nil && existing != nil {
+		return &CheckSlugResponse{Slug: slug, Available: false, Reason: "taken"}
+	}
+	return &CheckSlugResponse{Slug: slug, Available: true}
+}
+
 // ── login ──────────────────────────────────────────────────────────────────
 
 func (s *Service) Login(ctx context.Context, req LoginRequest, ip, userAgent string) (*LoginResponse, error) {
@@ -279,6 +333,12 @@ func (s *Service) RevokeSession(ctx context.Context, jti uuid.UUID) error {
 // and seeds system roles. Returns a login pair so the client lands logged-in.
 // The new tenant has NO subscription — caller must onboard one before any
 // gated feature works.
+//
+// All steps after the tenant insert are wrapped in a "rollback on failure"
+// guard: if any step fails the tenant is hard-deleted (cascading orgs +
+// memberships) so the slug can be retried. Without this, a failure at step
+// 2-5 would orphan the tenant and the user could never sign up with that
+// slug again ("ALREADY_EXISTS" forever).
 func (s *Service) Register(ctx context.Context, req RegisterRequest, ip, userAgent string) (*LoginResponse, error) {
 	// 1. Tenant + default org.
 	t, defaultOrg, err := s.tenantSvc.CreateTenant(ctx, tenant.CreateTenantRequest{
@@ -291,6 +351,19 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest, ip, userAge
 	if err != nil {
 		return nil, err
 	}
+
+	// Rollback guard — flipped to true only on full success.
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if cleanupErr := s.tenantSvc.HardDeleteTenant(context.Background(), t.ID); cleanupErr != nil {
+			s.log.Warn("register rollback: hard delete tenant failed",
+				zap.String("tenantId", t.ID.String()),
+				zap.Error(cleanupErr))
+		}
+	}()
 
 	// 2. Owner user (full bcrypt; status=active so they can sign in straight away).
 	pw, err := hash.Password(req.Password)
@@ -335,7 +408,12 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest, ip, userAge
 	}
 
 	// 6. Issue tokens — the response shape mirrors /auth/login.
-	return s.issueLoginPair(ctx, u, t, m, ip, userAgent)
+	resp, err := s.issueLoginPair(ctx, u, t, m, ip, userAgent)
+	if err != nil {
+		return nil, err
+	}
+	committed = true
+	return resp, nil
 }
 
 // ── invite ─────────────────────────────────────────────────────────────────
@@ -491,8 +569,51 @@ func (s *Service) ForgotPassword(ctx context.Context, email, ip, userAgent strin
 	if err := s.repo.CreatePasswordReset(ctx, rec); err != nil {
 		return apperr.New(apperr.CodeInternal, "create reset token failed", err)
 	}
-	s.publishPasswordResetEmail(ctx, u, tokenStr)
+	// Resolve a tenant-aware reset URL. Users may belong to multiple tenants;
+	// pick the primary if set, otherwise the first active membership. The
+	// resulting link lands them on {slug}.{apex}/reset-password where the
+	// per-subdomain session model applies.
+	baseURL := s.resolvePasswordResetBaseURL(ctx, u.ID, u.PrimaryTenantID)
+	s.publishPasswordResetEmail(ctx, u, tokenStr, baseURL)
 	return nil
+}
+
+// resolvePasswordResetBaseURL picks the best tenant subdomain to host the
+// reset link. Falls back to the legacy config value if a tenant can't be
+// resolved (e.g. orphaned user). Empty string if neither is configured —
+// caller's email template will then omit the link.
+func (s *Service) resolvePasswordResetBaseURL(ctx context.Context, userID uuid.UUID, primaryTenant *uuid.UUID) string {
+	apex := strings.TrimSpace(s.cfg.App.BaseDomain)
+	scheme := strings.TrimSpace(s.cfg.App.FrontendScheme)
+	if scheme == "" {
+		scheme = "https"
+	}
+	if apex != "" {
+		var slug string
+		if primaryTenant != nil && *primaryTenant != uuid.Nil {
+			if t, err := s.tenantSvc.GetTenant(ctx, *primaryTenant); err == nil {
+				slug = t.Slug
+			}
+		}
+		if slug == "" {
+			memberships, _, err := s.userSvc.ListMembershipsByUser(ctx, userID, 0, 0)
+			if err == nil {
+				for _, m := range memberships {
+					if m.Status != "active" {
+						continue
+					}
+					if t, err := s.tenantSvc.GetTenant(ctx, m.TenantID); err == nil {
+						slug = t.Slug
+						break
+					}
+				}
+			}
+		}
+		if slug != "" {
+			return scheme + "://" + slug + "." + apex + "/auth/reset-password"
+		}
+	}
+	return s.cfg.Auth.PasswordResetBaseURL
 }
 
 func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) error {
@@ -664,15 +785,18 @@ func (s *Service) publishInviteEmail(ctx context.Context, inv *Invite, tokenStr 
 	})
 }
 
-func (s *Service) publishPasswordResetEmail(ctx context.Context, u *user.User, tokenStr string) {
+func (s *Service) publishPasswordResetEmail(ctx context.Context, u *user.User, tokenStr, baseURL string) {
 	if s.producer == nil {
 		return
 	}
+	if baseURL == "" {
+		baseURL = s.cfg.Auth.PasswordResetBaseURL
+	}
 	_ = s.producer.Publish(ctx, queue.ChannelPasswordResetEmail, map[string]interface{}{
-		"userId": u.ID,
-		"email":  u.Email,
-		"token":  tokenStr,
-		"baseUrl": s.cfg.Auth.PasswordResetBaseURL,
+		"userId":  u.ID,
+		"email":   u.Email,
+		"token":   tokenStr,
+		"baseUrl": baseURL,
 	})
 }
 

@@ -54,6 +54,14 @@ func (r *Repository) UpdateTenant(ctx context.Context, id uuid.UUID, patch map[s
 	return nil
 }
 
+// HardDeleteTenant physically removes the row, bypassing GORM soft-delete.
+// Used by the signup rollback path: when user/membership creation fails after
+// the tenant insert, we must release the unique slug so the same payload can
+// be retried. CASCADE on tenant_id cleans up organizations + memberships.
+func (r *Repository) HardDeleteTenant(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&Tenant{}).Error
+}
+
 func (r *Repository) ArchiveTenant(ctx context.Context, id uuid.UUID) error {
 	res := r.db.WithContext(ctx).
 		Model(&Tenant{}).

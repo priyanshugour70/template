@@ -556,6 +556,70 @@ const (
 	invoiceDueDays        = 7
 )
 
+// ListPublicPlans returns the catalog of plans suitable for marketing /
+// onboarding: active, public, and NOT add-ons. Sorted by tier ascending so
+// Free → Starter → Pro → Enterprise renders left-to-right by default. No
+// pagination — the catalog is small and the caller needs the full list to
+// draw the comparison grid.
+func (s *Service) ListPublicPlans(ctx context.Context) ([]Plan, error) {
+	rows, _, err := s.repo.ListActivePlans(ctx, 0, 0)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeInternal, "list plans failed", err)
+	}
+	out := make([]Plan, 0, len(rows))
+	for _, p := range rows {
+		if p.IsAddon {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// CreateQuotationFromPlan looks up a public plan by code and produces a draft
+// quotation pre-filled with that plan's feature list. UserCount defaults to 1
+// if not provided. Wraps CreateQuotation so pricing/tax/numbering logic is
+// shared with the regular quotation flow.
+func (s *Service) CreateQuotationFromPlan(ctx context.Context, req CreateQuotationFromPlanRequest) (*Quotation, error) {
+	plan, err := s.repo.GetPlanByCode(ctx, req.PlanCode)
+	if err != nil {
+		if IsNotFound(err) {
+			return nil, apperr.New(apperr.CodeNotFound, "plan not found", nil)
+		}
+		return nil, apperr.New(apperr.CodeInternal, "fetch plan failed", err)
+	}
+	if !plan.IsActive || !plan.IsPublic || plan.IsAddon {
+		return nil, apperr.New(apperr.CodeForbidden, "plan is not available for self-service", nil)
+	}
+
+	// Decode the plan's features JSONB into a string slice. Plans always store
+	// features as a JSON array of feature keys — see migrations/012.
+	var featureKeys []string
+	if len(plan.Features) > 0 {
+		if err := json.Unmarshal(plan.Features, &featureKeys); err != nil {
+			return nil, apperr.New(apperr.CodeInternal, "decode plan features failed", err)
+		}
+	}
+	if len(featureKeys) == 0 {
+		return nil, apperr.New(apperr.CodeInvalidInput, "plan has no features configured", nil)
+	}
+
+	userCount := req.UserCount
+	if userCount <= 0 {
+		userCount = 1
+	}
+
+	return s.CreateQuotation(ctx, CreateQuotationRequest{
+		FeatureKeys:    featureKeys,
+		UserCount:      userCount,
+		CustomerState:  req.CustomerState,
+		BillingEmail:   req.BillingEmail,
+		BillingName:    req.BillingName,
+		BillingAddress: req.BillingAddress,
+		Notes:          req.Notes,
+	})
+}
+
 // CreateQuotation persists a new draft. Pricing is computed at draft time and
 // re-computed at activation time; in between, the snapshot here keeps the UI
 // responsive even when the catalog changes underneath.

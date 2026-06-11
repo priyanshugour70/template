@@ -58,6 +58,54 @@ func parseAllowedOrigins(raw string) []string {
 	return out
 }
 
+// buildAllowOriginFunc returns a predicate that matches:
+//   - any exact origin in `explicit` (e.g. "http://localhost:3000")
+//   - the apex over https (e.g. "https://lssgoo.com")
+//   - any subdomain of the apex over https (e.g. "https://acme.lssgoo.com")
+//   - the apex / subdomains over http when the apex itself is `lvh.me` or
+//     `localhost` (purely a dev convenience — wildcard http in prod is rejected
+//     by config validation)
+func buildAllowOriginFunc(explicit []string, apex string) func(string) bool {
+	set := make(map[string]struct{}, len(explicit))
+	for _, o := range explicit {
+		set[strings.ToLower(o)] = struct{}{}
+	}
+	apex = strings.ToLower(strings.TrimSpace(apex))
+	devApex := apex == "lvh.me" || apex == "localhost"
+	return func(origin string) bool {
+		o := strings.ToLower(strings.TrimSpace(origin))
+		if o == "" {
+			return false
+		}
+		if _, ok := set[o]; ok {
+			return true
+		}
+		if apex == "" {
+			return false
+		}
+		host := o
+		switch {
+		case strings.HasPrefix(host, "https://"):
+			host = host[len("https://"):]
+		case strings.HasPrefix(host, "http://"):
+			if !devApex {
+				return false
+			}
+			host = host[len("http://"):]
+		default:
+			return false
+		}
+		// Strip any port (browsers send origins without paths but with ports).
+		if i := strings.Index(host, ":"); i >= 0 {
+			host = host[:i]
+		}
+		if host == apex {
+			return true
+		}
+		return strings.HasSuffix(host, "."+apex)
+	}
+}
+
 // API is the bag of handles built by BootstrapAPI. Closed in main on shutdown.
 type API struct {
 	Config       *config.Config
@@ -95,15 +143,17 @@ func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*AP
 	router.MaxMultipartMemory = 50 << 20
 
 	origins := parseAllowedOrigins(cfg.CORS.AllowedOrigins)
+	allow := buildAllowOriginFunc(origins, cfg.CORS.AllowedApex)
 	router.Use(cors.New(cors.Config{
-		AllowOrigins: origins,
-		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowOriginFunc: allow,
+		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders: []string{
 			"Origin", "Content-Type", "Accept", "Authorization", "X-Api-Key",
 			middleware.HeaderCorrelationID, middleware.HeaderRequestID,
 		},
 		AllowCredentials: true,
 		ExposeHeaders:    []string{middleware.HeaderCorrelationID, middleware.HeaderRequestID},
+		MaxAge:           12 * time.Hour,
 	}))
 	router.Use(middleware.SecurityHeaders())
 	router.Use(middleware.Recovery(log), middleware.CorrelationID(log), middleware.Logger(log))
