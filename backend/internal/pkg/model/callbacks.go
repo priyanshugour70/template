@@ -15,6 +15,12 @@ import (
 // These callbacks cover bulk operations (db.Model(&X{}).Updates(...),
 // db.Delete(&X{}, "id = ?", id)) where the struct hooks would not fire on a
 // fully-populated record.
+//
+// SetColumn invocations pass the 3rd `fromCallbacks=true` arg. Without it,
+// GORM uses the "Hooks Method" branch which references stmt.CurDestIndex —
+// not initialised during the Before phase — and panics with "reflect: slice
+// index out of range" on any batch INSERT (slice create). See gorm
+// Statement.SetColumn docs for the two-mode signature.
 func RegisterCallbacks(db *gorm.DB) error {
 	cb := db.Callback()
 
@@ -39,10 +45,10 @@ func setActorCreate(db *gorm.DB) {
 		return
 	}
 	if _, ok := db.Statement.Schema.FieldsByDBName["created_by"]; ok {
-		db.Statement.SetColumn("created_by", uid)
+		db.Statement.SetColumn("created_by", uid, true)
 	}
 	if _, ok := db.Statement.Schema.FieldsByDBName["updated_by"]; ok {
-		db.Statement.SetColumn("updated_by", uid)
+		db.Statement.SetColumn("updated_by", uid, true)
 	}
 }
 
@@ -55,7 +61,7 @@ func setActorUpdate(db *gorm.DB) {
 		return
 	}
 	if _, ok := db.Statement.Schema.FieldsByDBName["updated_by"]; ok {
-		db.Statement.SetColumn("updated_by", uid)
+		db.Statement.SetColumn("updated_by", uid, true)
 	}
 }
 
@@ -68,6 +74,6 @@ func setActorDelete(db *gorm.DB) {
 		return
 	}
 	if _, ok := db.Statement.Schema.FieldsByDBName["deleted_by"]; ok {
-		db.Statement.SetColumn("deleted_by", uid)
+		db.Statement.SetColumn("deleted_by", uid, true)
 	}
 }

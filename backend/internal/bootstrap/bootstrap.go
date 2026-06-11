@@ -25,6 +25,10 @@ import (
 	"github.com/your-org/your-service/internal/modules/apikey"
 	"github.com/your-org/your-service/internal/modules/audit"
 	"github.com/your-org/your-service/internal/modules/auth"
+	"github.com/your-org/your-service/internal/modules/comm"
+	commInbound "github.com/your-org/your-service/internal/modules/comm/inbound"
+	commPresence "github.com/your-org/your-service/internal/modules/comm/presence"
+	commWS "github.com/your-org/your-service/internal/modules/comm/ws"
 	"github.com/your-org/your-service/internal/modules/dashboard"
 	"github.com/your-org/your-service/internal/modules/department"
 	"github.com/your-org/your-service/internal/modules/group"
@@ -249,7 +253,7 @@ func BootstrapAPI(ctx context.Context, cfg *config.Config, log *zap.Logger) (*AP
 		if err := pkgmodel.RegisterCallbacks(db); err != nil {
 			log.Warn("model callbacks registration failed", zap.Error(err))
 		}
-		registerModules(api, db, log, cfg, producer, cacheSvc, out)
+		registerModules(ctx, api, db, rdb, log, cfg, producer, cacheSvc, out)
 	} else {
 		log.Warn("skipping module registration — no database connection")
 		router.NoRoute(func(c *gin.Context) {
@@ -292,8 +296,10 @@ func newRedisClient(addr, password string, db int) *redis.Client {
 // registerModules wires every domain module in dependency order:
 // tenant → user → rbac → subscription → audit → auth.
 func registerModules(
+	ctx context.Context,
 	api *gin.RouterGroup,
 	db *gorm.DB,
+	rdb *redis.Client,
 	log *zap.Logger,
 	cfg *config.Config,
 	producer queue.Producer,
@@ -340,6 +346,41 @@ func registerModules(
 	authBillingPort := authBillingAdapter{billing: subM.Service}
 	authM := auth.New(db, tenantM.Service, userM.Service, rbacM.Service, authBillingPort, cfg, cacheSvc, producer, log)
 	dashboardM := dashboard.New(db, log)
+	// Comm module — DMs, channels, messages. Depends on user (for mention
+	// resolution + member hydration), notification (in-app delivery), and
+	// rbac (moderator-vs-author check on delete).
+	commM := comm.New(db, userM.Service, notifM.Service, rbacM.Service, log)
+
+	// Phase 2: realtime. Hub, ticket store, Redis pub/sub, presence tracker,
+	// inbound webhook module. The subscriber goroutine starts below once the
+	// API context is in scope so it inherits the shutdown signal.
+	commHub := commWS.NewHub(log)
+	commPubsub := commWS.NewPubSub(rdb, commHub, log)
+	commTickets := commWS.NewTicketStore(rdb)
+	commTracker := commPresence.NewTracker(rdb)
+	// Allowed WS origins follow the same wildcard rules as REST CORS — the
+	// browser sends Origin on the upgrade handshake.
+	wsAllowedOrigins := append(parseAllowedOrigins(cfg.CORS.AllowedOrigins),
+		"*."+strings.TrimSpace(cfg.CORS.AllowedApex))
+	commWSHandler := commWS.NewHandler(commTickets, commHub, commPubsub, commTracker, wsAllowedOrigins, log)
+
+	// Close the loop: comm.Service can now broadcast via Redis pubsub.
+	commM.Service.SetBroadcaster(comm.NewWSBroadcaster(commPubsub, log))
+
+	// Inbound webhook module — depends on comm for actually persisting +
+	// broadcasting the message.
+	inboundRepo := commInbound.NewRepository(db)
+	inboundBaseURL := strings.TrimRight(
+		cfg.App.FrontendScheme+"://api."+cfg.App.BaseDomain, "/")
+	if cfg.App.BaseDomain == "" {
+		inboundBaseURL = ""
+	}
+	inboundSvc := commInbound.NewService(inboundRepo, commM.Service, inboundBaseURL, log)
+	inboundHandler := commInbound.NewHandler(inboundSvc, log)
+
+	// Spawn the pub/sub subscriber goroutine. It inherits the bootstrap ctx
+	// and exits when the API shuts down.
+	go commPubsub.Run(ctx)
 
 	out.TenantSvc = tenantM.Service
 	out.UserSvc = userM.Service
@@ -384,6 +425,9 @@ func registerModules(
 	webhookM.Handler.Routes(api, authMW, permFn)
 	authM.Handler.Routes(api, authMW, permFn)
 	dashboardM.Handler.Routes(api, authMW, permFn)
+	commM.Handler.Routes(api, authMW, permFn)
+	commWSHandler.Routes(api, authMW)
+	inboundHandler.Routes(api, authMW, permFn)
 }
 
 func (a *API) Close() {
