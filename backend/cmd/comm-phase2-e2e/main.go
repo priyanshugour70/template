@@ -331,12 +331,14 @@ func main() {
 	}, 5*time.Second)
 	check("tab2 receives message.created", err)
 
-	// Typing: tab1 sends typing, tab2 receives it; tab1 should NOT see its own.
+	// Typing: tab1 sends typing. Because both tabs belong to the SAME user,
+	// the exclude-typer rule must hide it from tab2 too. Assertion is the
+	// negative — no typing frame inside the throttle window.
 	check("tab1 typing", tab1.send(map[string]any{"type": "typing", "conversationId": convID}))
-	_, err = tab2.awaitFrame(func(f map[string]any) bool {
-		return f["type"] == "typing" && f["conversationId"] == convID.String()
-	}, 5*time.Second)
-	check("tab2 receives typing", err)
+	if f, err := tab2.awaitFrame(typeIs("typing"), 1500*time.Millisecond); err == nil {
+		log.Fatalf("FAIL: tab2 should NOT receive typing from same user but got %v", f)
+	}
+	fmt.Println("✓ tab2 correctly excluded from same-user typing")
 
 	// Inbound webhook: create hook → POST plaintext message → both tabs receive.
 	hookToken, hookID, err := c.createInboundHook(convID, "phase2 e2e hook")

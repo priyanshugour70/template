@@ -82,6 +82,14 @@ const sections: NavSection[] = [
     ],
   },
   {
+    id: "communication",
+    label: "Communication",
+    collapsible: true,
+    items: [
+      { href: "/dashboard/communication", label: "Channels & DMs", icon: "message-square" },
+    ],
+  },
+  {
     id: "billing",
     label: "Billing",
     collapsible: true,
@@ -149,6 +157,7 @@ function NavIcon({ name }: { name: string }) {
     ),
     bell: <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />,
     code: <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />,
+    "message-square": <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />,
   };
 
   return (

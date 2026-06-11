@@ -359,9 +359,19 @@ func registerModules(
 	commTickets := commWS.NewTicketStore(rdb)
 	commTracker := commPresence.NewTracker(rdb)
 	// Allowed WS origins follow the same wildcard rules as REST CORS — the
-	// browser sends Origin on the upgrade handshake.
-	wsAllowedOrigins := append(parseAllowedOrigins(cfg.CORS.AllowedOrigins),
-		"*."+strings.TrimSpace(cfg.CORS.AllowedApex))
+	// browser sends Origin on the upgrade handshake. coder/websocket's
+	// OriginPatterns matches via path.Match against the request Origin host
+	// (or scheme://host if the pattern contains "://"). path.Match's `*`
+	// doesn't cross dot/colon boundaries, so to permit subdomain.apex and
+	// subdomain.apex:port we register multiple patterns explicitly.
+	wsAllowedOrigins := parseAllowedOrigins(cfg.CORS.AllowedOrigins)
+	if apex := strings.TrimSpace(cfg.CORS.AllowedApex); apex != "" {
+		wsAllowedOrigins = append(wsAllowedOrigins,
+			apex,
+			"*."+apex,
+			"*."+apex+":*",
+		)
+	}
 	commWSHandler := commWS.NewHandler(commTickets, commHub, commPubsub, commTracker, wsAllowedOrigins, log)
 
 	// Close the loop: comm.Service can now broadcast via Redis pubsub.
