@@ -154,6 +154,56 @@ VALUES (
   now()
 ) ON CONFLICT DO NOTHING;
 
+-- ── second seed user (Bob, regular member; password: Member@123) ─────────
+-- Exists so the DM picker in the communication module has a counterpart
+-- the e2e tests can pick. ON CONFLICT keeps the seed idempotent.
+INSERT INTO users (
+  id, email, password_hash, password_algo, password_changed_at,
+  first_name, last_name, display_name,
+  status, locale, timezone,
+  is_super_admin,
+  primary_tenant_id, primary_organization_id,
+  email_verified_at,
+  preferences, notification_preferences, metadata,
+  created_at, updated_at
+) VALUES (
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab',
+  'bob.builder@acme.example',
+  -- bcrypt hash of "Member@123"
+  '$2a$12$FNn1UAqL8QLHKTe0oIOi4esi4QOvA.OGgkHpP8IyCV/bzNqPHJlEK',
+  'bcrypt', now(),
+  'Bob', 'Builder', 'Bob Builder',
+  'active', 'en-IN', 'Asia/Kolkata',
+  false,
+  '11111111-1111-1111-1111-111111111111',
+  '22222222-2222-2222-2222-222222222222',
+  now(),
+  '{}', '{}', '{"seeded": true}',
+  now(), now()
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO memberships (
+  id, user_id, tenant_id, organization_id,
+  status, is_default, is_owner, is_billing_contact,
+  joined_at, settings, metadata,
+  created_at, updated_at
+) VALUES (
+  'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab',
+  '11111111-1111-1111-1111-111111111111',
+  '22222222-2222-2222-2222-222222222222',
+  'active', true, false, false,
+  now(), '{}', '{"seeded": true}',
+  now(), now()
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO membership_roles (membership_id, role_id, granted_at)
+VALUES (
+  'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+  '77777777-7777-7777-7777-777777777777',
+  now()
+) ON CONFLICT DO NOTHING;
+
 -- ── seed subscription (Free plan, active) ────────────────────────────────
 -- Table was renamed in migration 012 (subscription_plans → billing_plans,
 -- subscriptions → billing_subscriptions). Same column shape, new prefixes.

@@ -7,6 +7,7 @@ import { communicationService } from "@/services/communication";
 import type {
   ChannelHook,
   Conversation,
+  ConversationListItem,
   ConversationView,
   CreateChannelRequest,
   CreateHookRequest,
@@ -95,6 +96,59 @@ export function useCreateChannel() {
   });
 }
 
+export function useCreateDM() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (recipientUserId: string) => {
+      const res = await communicationService.createOrGetDM(recipientUserId);
+      if (!res.success) throw new Error(res.error?.message ?? "create DM failed");
+      return res.data!;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [ROOT, "conversations"] });
+    },
+  });
+}
+
+export function useAddReaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { messageId: string; emoji: string }) => {
+      const res = await communicationService.addReaction(input.messageId, input.emoji);
+      if (!res.success) throw new Error(res.error?.message ?? "add reaction failed");
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [ROOT, "messages"] });
+    },
+  });
+}
+
+export function useRemoveReaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { messageId: string; emoji: string }) => {
+      const res = await communicationService.removeReaction(input.messageId, input.emoji);
+      if (!res.success) throw new Error(res.error?.message ?? "remove reaction failed");
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [ROOT, "messages"] });
+    },
+  });
+}
+
+export function useMarkRead(conversationId: string | undefined) {
+  return useMutation({
+    mutationFn: async (lastReadMessageId: string) => {
+      if (!conversationId) return;
+      const res = await communicationService.markRead(conversationId, { lastReadMessageId });
+      if (!res.success) throw new Error(res.error?.message ?? "mark read failed");
+      return res.data;
+    },
+  });
+}
+
 export function useSendMessage(conversationId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -172,6 +226,42 @@ export function useLiveMessages(conversationId: string | undefined) {
       qc.setQueryData<MessageView[]>(KEY.messages(conversationId), (prev) =>
         (prev ?? []).filter((m) => m.id !== frame.messageId),
       );
+    } else if (
+      (frame.type === "reaction.added" || frame.type === "reaction.removed") &&
+      frame.messageId &&
+      frame.emoji
+    ) {
+      qc.setQueryData<MessageView[]>(KEY.messages(conversationId), (prev) =>
+        (prev ?? []).map((m) => {
+          if (m.id !== frame.messageId) return m;
+          const reactions = m.reactions ?? [];
+          if (frame.type === "reaction.added") {
+            const exists = reactions.some(
+              (r) => r.userId === frame.userId && r.emoji === frame.emoji,
+            );
+            if (exists) return m;
+            return {
+              ...m,
+              reactions: [
+                ...reactions,
+                {
+                  id: `${frame.messageId}-${frame.userId}-${frame.emoji}`,
+                  messageId: frame.messageId!,
+                  userId: frame.userId!,
+                  emoji: frame.emoji!,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            };
+          }
+          return {
+            ...m,
+            reactions: reactions.filter(
+              (r) => !(r.userId === frame.userId && r.emoji === frame.emoji),
+            ),
+          };
+        }),
+      );
     }
   });
 
@@ -224,4 +314,10 @@ export function useTypingUsers(conversationId: string | undefined) {
   return Object.keys(data ?? {});
 }
 
-export type { ChannelHook, Conversation, ConversationView, MessageView };
+export type {
+  ChannelHook,
+  Conversation,
+  ConversationListItem,
+  ConversationView,
+  MessageView,
+};

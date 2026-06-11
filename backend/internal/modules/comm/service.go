@@ -234,7 +234,7 @@ func (s *Service) ArchiveChannel(ctx context.Context, id uuid.UUID) error {
 
 // ── Conversation reads ────────────────────────────────────────────────────
 
-func (s *Service) ListMyConversations(ctx context.Context, f ListConversationsFilter) ([]Conversation, error) {
+func (s *Service) ListMyConversations(ctx context.Context, f ListConversationsFilter) ([]ConversationListItem, error) {
 	oid := appctx.OrganizationID(ctx)
 	uid := appctx.UserID(ctx)
 	if oid == uuid.Nil || uid == uuid.Nil {

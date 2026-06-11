@@ -57,7 +57,11 @@ export function ConversationPane({ conversationId }: Props) {
         )}
       </header>
 
-      <MessageList messages={messages} loading={isLoading} />
+      <MessageList
+        conversationId={conversationId}
+        messages={messages}
+        loading={isLoading}
+      />
       <TypingIndicator typingUserIds={typingUserIds} />
       <Composer conversationId={conversationId} />
 

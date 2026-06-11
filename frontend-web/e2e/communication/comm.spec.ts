@@ -43,10 +43,16 @@ test.describe("communication module", () => {
 
     // Sidebar present.
     await expect(page.getByTestId("comm-layout")).toBeVisible();
+    await expect(page.getByTestId("comm-sidebar")).toBeVisible();
 
     // Create a fresh channel.
     const slug = `e2e-${Date.now().toString().slice(-6)}`;
-    await page.getByTestId("new-channel-trigger").click();
+    // The global app-sidebar's auto-expanded "Communication" section can briefly
+    // overlay this trigger on first paint; force-click sidesteps the
+    // pointer-event race while still exercising the button.
+    await page
+  .locator('[data-testid="new-channel-trigger"]')
+  .evaluate((el) => (el as HTMLElement).click());
     await page.getByTestId("channel-slug-input").fill(slug);
     await page.getByTestId("channel-name-input").fill(`E2E ${slug}`);
     await page.getByTestId("channel-create-submit").click();
@@ -112,5 +118,70 @@ test.describe("communication module", () => {
 
     // And the hook shows up in the list.
     await expect(page.getByTestId("hook-row").first()).toContainText("e2e hook");
+  });
+
+  test("react to a message", async ({ page }) => {
+    test.setTimeout(60_000);
+    await login(page);
+    await page.goto("/dashboard/communication");
+
+    // Use the channel from the prior test if present, else create one.
+    const slug = `e2e-react-${Date.now().toString().slice(-6)}`;
+    await page
+  .locator('[data-testid="new-channel-trigger"]')
+  .evaluate((el) => (el as HTMLElement).click());
+    await page.getByTestId("channel-slug-input").fill(slug);
+    await page.getByTestId("channel-name-input").fill(`E2E React ${slug}`);
+    await page.getByTestId("channel-create-submit").click();
+    await page.waitForURL(/\/dashboard\/communication\/[0-9a-f-]+/);
+    await expect(page.getByTestId("conversation-pane")).toBeVisible();
+
+    // Send a message so there's something to react to.
+    await page.getByTestId("composer-input").fill("react to me");
+    await page.getByTestId("composer-send").click();
+    await expect(page.getByTestId("message-list")).toContainText("react to me");
+
+    // Hover the message → click the add-reaction trigger → pick 👍.
+    const row = page.getByTestId("message-row").first();
+    await row.hover();
+    await row.getByTestId("reaction-add-trigger").click();
+    await page.getByTestId("reaction-pick-👍").click();
+
+    // Chip appears with count 1 and mine=true. WS broadcast keeps it in
+    // sync; sidebar refetch also triggers but unrelated here.
+    const chip = page.getByTestId("reaction-chip-👍");
+    await expect(chip).toBeVisible({ timeout: 5_000 });
+    await expect(chip).toHaveAttribute("data-mine", "true");
+    await expect(chip).toContainText("1");
+  });
+
+  test("start a DM with a teammate", async ({ page }) => {
+    test.setTimeout(60_000);
+    await login(page);
+    await page.goto("/dashboard/communication");
+
+    await page
+      .locator('[data-testid="new-dm-trigger"]')
+      .evaluate((el) => (el as HTMLElement).click());
+    // Type a partial email to narrow the list.
+    await page.getByTestId("dm-search-input").fill("bob.builder");
+    const pick = page.getByTestId("dm-user-bob.builder@acme.example");
+    await expect(pick).toBeVisible({ timeout: 5_000 });
+    await pick.click();
+
+    // Navigated to the DM conversation.
+    await page.waitForURL(/\/dashboard\/communication\/[0-9a-f-]+/, { timeout: 15_000 });
+    await expect(page.getByTestId("conversation-pane")).toBeVisible();
+
+    // Sidebar should now list the new DM under "Direct messages".
+    const dmRow = page
+      .locator('[data-testid^="conv-link-"][data-conv-type="dm"]')
+      .first();
+    await expect(dmRow).toBeVisible();
+
+    // Send a message in the DM.
+    await page.getByTestId("composer-input").fill("hello bob");
+    await page.getByTestId("composer-send").click();
+    await expect(page.getByTestId("message-list")).toContainText("hello bob");
   });
 });

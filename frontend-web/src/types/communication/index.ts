@@ -36,6 +36,14 @@ export interface ConversationView extends Conversation {
   myMembership?: ConversationMemberView | null;
 }
 
+/** Row shape returned by GET /comm/conversations — Conversation + the
+ * caller's unread state, so the sidebar can render badges without a second
+ * round trip. */
+export interface ConversationListItem extends Conversation {
+  unreadCount: number;
+  lastReadMessageId?: ID | null;
+}
+
 // ── Messages ──────────────────────────────────────────────────────────────
 
 export type MessageSenderType = "user" | "system" | "webhook";

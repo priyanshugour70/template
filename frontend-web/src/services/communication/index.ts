@@ -2,6 +2,7 @@ import { api } from "@/lib/client";
 import type {
   ChannelHook,
   Conversation,
+  ConversationListItem,
   ConversationView,
   CreateChannelRequest,
   CreateHookRequest,
@@ -18,7 +19,7 @@ import type {
 export const communicationService = {
   // conversations
   listConversations: (params?: { type?: "channel" | "dm"; includeArchived?: boolean; limit?: number }) =>
-    api.get<Conversation[]>("/comm/conversations", { query: { limit: 50, ...params } }),
+    api.get<ConversationListItem[]>("/comm/conversations", { query: { limit: 50, ...params } }),
   getConversation: (id: string) => api.get<ConversationView>(`/comm/conversations/${id}`),
   createChannel: (req: CreateChannelRequest) =>
     api.post<Conversation>("/comm/conversations/channels", req),
@@ -37,6 +38,12 @@ export const communicationService = {
     api.post<MessageView>(`/comm/conversations/${conversationId}/messages`, req),
   markRead: (conversationId: string, req: MarkReadRequest) =>
     api.post<unknown>(`/comm/conversations/${conversationId}/read`, req),
+
+  // reactions
+  addReaction: (messageId: string, emoji: string) =>
+    api.post<unknown>(`/comm/messages/${messageId}/reactions`, { emoji }),
+  removeReaction: (messageId: string, emoji: string) =>
+    api.delete<unknown>(`/comm/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`),
 
   // inbound hooks
   listHooks: (conversationId: string) =>

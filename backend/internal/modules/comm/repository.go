@@ -97,7 +97,7 @@ func (r *Repository) ListConversationsForUser(
 	ctx context.Context,
 	orgID, userID uuid.UUID,
 	f ListConversationsFilter,
-) ([]Conversation, error) {
+) ([]ConversationListItem, error) {
 	q := r.db.WithContext(ctx).
 		Table("comm_conversations c").
 		Joins("JOIN comm_conversation_members m ON m.conversation_id = c.id "+
@@ -114,8 +114,10 @@ func (r *Repository) ListConversationsForUser(
 	if f.Limit > 0 {
 		q = q.Limit(f.Limit)
 	}
-	out := []Conversation{}
-	if err := q.Select("c.*").Find(&out).Error; err != nil {
+	out := []ConversationListItem{}
+	if err := q.
+		Select("c.*, m.unread_count AS unread_count, m.last_read_message_id AS last_read_message_id").
+		Find(&out).Error; err != nil {
 		return nil, err
 	}
 	return out, nil

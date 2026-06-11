@@ -203,6 +203,16 @@ type ConversationView struct {
 	MyMembership *ConversationMemberView  `json:"myMembership,omitempty"`
 }
 
+// ConversationListItem is the row shape returned by
+// `GET /comm/conversations`. It bundles the bare Conversation with the
+// caller's per-conversation state so the sidebar can render unread badges
+// without an N+1 fetch.
+type ConversationListItem struct {
+	Conversation
+	UnreadCount       int        `gorm:"column:unread_count"          json:"unreadCount"`
+	LastReadMessageID *uuid.UUID `gorm:"column:last_read_message_id"  json:"lastReadMessageId,omitempty"`
+}
+
 // ConversationMemberView denormalises the user record alongside the
 // membership so the client doesn't have to do an N+1 fetch for avatars/names.
 type ConversationMemberView struct {
