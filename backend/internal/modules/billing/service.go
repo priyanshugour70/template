@@ -505,10 +505,33 @@ func (s *Service) renderInvoicePDF(ctx context.Context, inv *Invoice) ([]byte, e
 		periodEnd = *inv.PeriodEnd
 	}
 
+	// Pull the seller identity (FROM block) from the tenant row so each
+	// tenant's invoices show their own legal name / GSTIN / billing address
+	// rather than the placeholder singleton in billing_tax_config. Falls back
+	// to the tax_config values when the tenant hasn't set up billing info yet.
+	companyName := tax.CompanyName
+	companyAddress := tax.CompanyAddress
+	companyGSTIN := tax.GSTIN
+	if s.tenantSvc != nil {
+		if t, _ := s.tenantSvc.GetTenant(ctx, inv.TenantID); t != nil {
+			if v := strings.TrimSpace(t.BillingName); v != "" {
+				companyName = v
+			} else if v := strings.TrimSpace(t.Name); v != "" {
+				companyName = v
+			}
+			if v := strings.TrimSpace(t.TaxID); v != "" {
+				companyGSTIN = v
+			}
+			if addr := formatTenantBillingAddress(t.BillingAddress); addr != "" {
+				companyAddress = addr
+			}
+		}
+	}
+
 	in := pdf.InvoiceInput{
-		CompanyName:     tax.CompanyName,
-		CompanyAddress:  tax.CompanyAddress,
-		CompanyGSTIN:    tax.GSTIN,
+		CompanyName:     companyName,
+		CompanyAddress:  companyAddress,
+		CompanyGSTIN:    companyGSTIN,
 		BankName:        tax.BankName,
 		BankAccount:     tax.BankAccountNumber,
 		BankIFSC:        tax.BankIFSC,
@@ -1566,4 +1589,29 @@ func currencySymbol(c string) string {
 	default:
 		return c + " "
 	}
+}
+
+// formatTenantBillingAddress flattens the tenant.BillingAddress JSONB into a
+// single-line string suitable for the invoice PDF header. Empty values are
+// skipped so a sparsely-filled address doesn't render as " , , , ". Recognises
+// the common keys (line1/line2/city/state/postalCode/country); unknown keys
+// are appended in deterministic order.
+func formatTenantBillingAddress(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil || len(m) == 0 {
+		return ""
+	}
+	known := []string{"line1", "line2", "city", "state", "postalCode", "country"}
+	parts := make([]string, 0, len(known))
+	for _, k := range known {
+		if v, ok := m[k]; ok {
+			if s := strings.TrimSpace(fmt.Sprintf("%v", v)); s != "" {
+				parts = append(parts, s)
+			}
+		}
+	}
+	return strings.Join(parts, ", ")
 }

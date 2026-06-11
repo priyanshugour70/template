@@ -254,16 +254,19 @@ func drawLineItems(doc *gopdf.GoPdf, yStart float64, in InvoiceInput) float64 {
 	contentW := pageWidth - 2*margin
 
 	// Column widths sum to contentW. Description gets the rest.
-	cols := []float64{0, 50, 30, 65, 75, 70, 0}
 	// description, hsn, qty, rate, taxable, tax, total
+	// Bug fix: the TOTAL column had width 0, so its header and values rendered
+	// on top of the tax column — that's why the last column read "CGSTTSGSI"
+	// with double rupee signs in every row.
+	cols := []float64{0, 50, 30, 65, 70, 70, 65}
 	used := 0.0
-	for _, w := range cols {
+	for i, w := range cols {
+		if i == 0 {
+			continue
+		}
 		used += w
 	}
-	// Description takes any leftover.
-	cols[0] = contentW - used
-	// "tax" column collapses or expands based on intra/inter state but width
-	// is fixed — easier rendering.
+	cols[0] = contentW - used // description takes leftover
 
 	// header
 	doc.SetFillColor(0xF5, 0xF7, 0xFA)
