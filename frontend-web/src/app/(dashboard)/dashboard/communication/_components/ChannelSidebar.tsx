@@ -231,7 +231,9 @@ function ConversationRow({
         )}
       </span>
       <span className="truncate flex-1 min-w-0">
-        {conv.type === "channel" ? conv.slug : conv.name ?? "DM"}
+        {conv.type === "channel"
+          ? conv.name ?? conv.slug ?? "channel"
+          : conv.name ?? "Direct message"}
       </span>
       {unread > 0 && (
         <Badge

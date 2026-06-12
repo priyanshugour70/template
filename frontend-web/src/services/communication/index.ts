@@ -1,8 +1,10 @@
 import { api } from "@/lib/client";
 import type {
+  AddMembersRequest,
   ChannelHook,
   Conversation,
   ConversationListItem,
+  ConversationMemberView,
   ConversationView,
   CreateChannelRequest,
   CreateHookRequest,
@@ -10,6 +12,7 @@ import type {
   MarkReadRequest,
   MessageView,
   SendMessageRequest,
+  UpdateChannelRequest,
   WSTicketResponse,
 } from "@/types/communication";
 
@@ -25,6 +28,23 @@ export const communicationService = {
     api.post<Conversation>("/comm/conversations/channels", req),
   createOrGetDM: (recipientUserId: string) =>
     api.post<Conversation>("/comm/conversations/dms", { recipientUserId }),
+  updateChannel: (conversationId: string, req: UpdateChannelRequest) =>
+    api.patch<Conversation>(`/comm/conversations/${conversationId}`, req),
+  archiveChannel: (conversationId: string) =>
+    api.delete<unknown>(`/comm/conversations/${conversationId}`),
+
+  // members
+  listMembers: (conversationId: string) =>
+    api.get<ConversationMemberView[]>(`/comm/conversations/${conversationId}/members`),
+  addMembers: (conversationId: string, req: AddMembersRequest) =>
+    api.post<ConversationMemberView[]>(
+      `/comm/conversations/${conversationId}/members`,
+      req,
+    ),
+  removeMember: (conversationId: string, userId: string) =>
+    api.delete<unknown>(
+      `/comm/conversations/${conversationId}/members/${userId}`,
+    ),
 
   // messages
   listMessages: (

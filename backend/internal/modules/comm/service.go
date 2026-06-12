@@ -135,6 +135,9 @@ func (s *Service) CreateOrGetDM(ctx context.Context, recipientUserID uuid.UUID) 
 	}); err != nil {
 		return nil, apperr.New(apperr.CodeInternal, "create dm failed", err)
 	}
+	if peer := s.dmPeerName(ctx, conv.ID, uid); peer != "" {
+		conv.Name = peer
+	}
 	return conv, nil
 }
 
@@ -247,7 +250,44 @@ func (s *Service) ListMyConversations(ctx context.Context, f ListConversationsFi
 	if err != nil {
 		return nil, apperr.New(apperr.CodeInternal, "list conversations failed", err)
 	}
+	// Hydrate DM titles with the OTHER member's display name so the sidebar
+	// shows "Bob Builder" instead of a literal "DM" string.
+	for i := range rows {
+		if rows[i].Type == "dm" {
+			if peer := s.dmPeerName(ctx, rows[i].ID, uid); peer != "" {
+				rows[i].Name = peer
+			}
+		}
+	}
 	return rows, nil
+}
+
+// dmPeerName resolves the other member of a DM to a display string. Empty
+// when the lookup fails (best-effort — the UI falls back to a placeholder).
+func (s *Service) dmPeerName(ctx context.Context, convID, callerID uuid.UUID) string {
+	members, err := s.repo.ListMembers(ctx, convID)
+	if err != nil {
+		return ""
+	}
+	for _, m := range members {
+		if m.UserID == callerID {
+			continue
+		}
+		u, err := s.userSvc.GetByID(ctx, m.UserID)
+		if err != nil || u == nil {
+			continue
+		}
+		if u.DisplayName != "" {
+			return u.DisplayName
+		}
+		first, last := strings.TrimSpace(u.FirstName), strings.TrimSpace(u.LastName)
+		full := strings.TrimSpace(first + " " + last)
+		if full != "" {
+			return full
+		}
+		return u.Email
+	}
+	return ""
 }
 
 // GetConversationView returns the conversation + hydrated members + caller's
@@ -284,6 +324,13 @@ func (s *Service) GetConversationView(ctx context.Context, id uuid.UUID) (*Conve
 	if myMember != nil {
 		me := s.hydrateMembers(ctx, []ConversationMember{*myMember})[0]
 		view.MyMembership = &me
+	}
+	// DM titles: same hydration as the list endpoint — the conv pane header
+	// reads view.Conversation.Name.
+	if view.Type == "dm" {
+		if peer := s.dmPeerName(ctx, id, uid); peer != "" {
+			view.Name = peer
+		}
 	}
 	return view, nil
 }

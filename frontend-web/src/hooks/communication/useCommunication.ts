@@ -5,9 +5,11 @@ import { useEffect } from "react";
 
 import { communicationService } from "@/services/communication";
 import type {
+  AddMembersRequest,
   ChannelHook,
   Conversation,
   ConversationListItem,
+  ConversationMemberView,
   ConversationView,
   CreateChannelRequest,
   CreateHookRequest,
@@ -15,6 +17,7 @@ import type {
   MessageView,
   SendMessageRequest,
   ServerFrame,
+  UpdateChannelRequest,
 } from "@/types/communication";
 
 import { useConversationStream } from "./useCommSocket";
@@ -25,6 +28,7 @@ const KEY = {
   conversation: (id: string) => [ROOT, "conversation", id] as const,
   messages: (id: string) => [ROOT, "messages", id] as const,
   hooks: (id: string) => [ROOT, "hooks", id] as const,
+  members: (id: string) => [ROOT, "members", id] as const,
 };
 
 // ── queries ────────────────────────────────────────────────────────────────
@@ -92,6 +96,77 @@ export function useCreateChannel() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: [ROOT, "conversations"] });
+    },
+  });
+}
+
+export function useUpdateChannel(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (req: UpdateChannelRequest) => {
+      const res = await communicationService.updateChannel(conversationId, req);
+      if (!res.success) throw new Error(res.error?.message ?? "update channel failed");
+      return res.data!;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY.conversation(conversationId) });
+      void qc.invalidateQueries({ queryKey: [ROOT, "conversations"] });
+    },
+  });
+}
+
+export function useArchiveChannel(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await communicationService.archiveChannel(conversationId);
+      if (!res.success) throw new Error(res.error?.message ?? "archive failed");
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [ROOT, "conversations"] });
+    },
+  });
+}
+
+export function useMembers(conversationId: string | undefined) {
+  return useQuery<ConversationMemberView[]>({
+    queryKey: conversationId ? KEY.members(conversationId) : [ROOT, "members", "_none"],
+    enabled: Boolean(conversationId),
+    queryFn: async () => {
+      const res = await communicationService.listMembers(conversationId!);
+      if (!res.success) throw new Error(res.error?.message ?? "load members failed");
+      return res.data ?? [];
+    },
+  });
+}
+
+export function useAddMembers(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (req: AddMembersRequest) => {
+      const res = await communicationService.addMembers(conversationId, req);
+      if (!res.success) throw new Error(res.error?.message ?? "add members failed");
+      return res.data ?? [];
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY.members(conversationId) });
+      void qc.invalidateQueries({ queryKey: KEY.conversation(conversationId) });
+    },
+  });
+}
+
+export function useRemoveMember(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await communicationService.removeMember(conversationId, userId);
+      if (!res.success) throw new Error(res.error?.message ?? "remove member failed");
+      return res.data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY.members(conversationId) });
+      void qc.invalidateQueries({ queryKey: KEY.conversation(conversationId) });
     },
   });
 }

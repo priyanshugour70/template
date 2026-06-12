@@ -95,6 +95,17 @@ export interface CreateChannelRequest {
   memberIds?: ID[];
 }
 
+export interface UpdateChannelRequest {
+  name?: string;
+  topic?: string;
+  description?: string;
+  isPrivate?: boolean;
+}
+
+export interface AddMembersRequest {
+  userIds: ID[];
+}
+
 export interface SendMessageRequest {
   body: string;
   bodyFormat?: "markdown" | "plain";
